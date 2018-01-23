@@ -1,0 +1,363 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <!-- <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script> -->
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+  
+<script id="webgl2.vs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 pos;
+
+  out vec3 vpos;
+  out vec3 vcol;
+
+  uniform mat4 m4_projection;
+  uniform mat4 m4_modelview;
+  uniform mat3 m3_normals;
+  
+  uniform int num_verts;
+  
+  #define PALETTE_LEN 8
+  uniform vec3 palette[PALETTE_LEN];
+  
+  vec3 getShading(float val){
+    val = clamp(val, 0.0, 0.99999);
+    float lum_steps = val * float(PALETTE_LEN-1);
+    float frac = fract(lum_steps);
+    int id = int(floor(lum_steps));
+    return mix(palette[id], palette[id+1], frac);
+  }
+  
+  void main(){
+    gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
+    vpos = (m4_modelview * vec4(pos, 1.0)).xyz;
+    
+    float domain = float(gl_VertexID) / float(num_verts);
+    vcol = getShading(domain);
+  }
+</script>
+
+
+<script id="webgl2.fs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 vpos;
+  in vec3 vcol;
+
+  out vec4 fragcol;
+  
+  uniform float cam_dist;
+  
+  void main(){
+    fragcol = vec4(vcol, 1);
+    fragcol.rgb = pow(fragcol.rgb, vec3(1.0/2.2));
+    
+    float frag_w = gl_FragCoord.w;
+    float frag_z = gl_FragCoord.z;
+    
+    float depth =  frag_z * frag_w * (max(cam_dist*0.85 - 200.0, 0.0) + 200.0);
+
+    depth = pow(depth, 5.0);
+    depth = clamp(depth, 0.0, 1.4);
+    fragcol.rgb *= depth;
+  }
+</script>
+
+    
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+    <div id="sketch-controls"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+    
+    Dw.start('Hilbert Curve 3D', function(app){
+      
+      var canvas;
+      var gl;
+      
+      var shader;
+      var hilbertcurve;
+      
+      var m4_modelview  = mat4.create();
+      var m4_projection = mat4.create();
+      var m3_normals    = mat3.create();
+         
+      var orbit;
+      var easycam;
+      
+      app.init = function(){
+        console.log(this);
+        app.webgl_attributes.antialias = true;
+      }
+      
+      
+      app.setup = function(){
+      
+        canvas = this.canvas;
+        gl = this.gl;
+        
+        orbit = new Dw.OrbitControl(this);
+        easycam = new Dw.EasyCam(this, {distance: 800});
+        
+        var w = canvas.width;
+        var h = canvas.height;
+
+        // create Shader
+        var vs = document.getElementById("webgl2.vs_draw").textContent;
+        var fs = document.getElementById("webgl2.fs_draw").textContent;
+        
+        shader = new Dw.Shader(gl, {vs:vs, fs:fs});
+
+        hilbertcurve = new HilbertCurve();
+        
+        createHilbertCurve();
+        
+        shader.vert.setDefine('PALETTE_LEN', hilbertcurve.palette.length / 3);
+      }
+      
+      app.keyup = function(ev){
+        if(ev.key == '1') createHilbertCurve(1);
+        if(ev.key == '2') createHilbertCurve(2);
+        if(ev.key == '3') createHilbertCurve(3);
+        if(ev.key == '4') createHilbertCurve(4);
+        if(ev.key == '5') createHilbertCurve(5);
+        if(ev.key == '6') createHilbertCurve(6);
+        if(ev.key == '7') createHilbertCurve(7);
+        if(ev.key == '8') createHilbertCurve(8);
+      }
+      
+      var ctrl_info = " - ";
+      ctrl_info += "'1' to '8' Level - ";
+      document.getElementById('sketch-controls').textContent = ctrl_info;
+      
+
+      class HilbertCurve {
+        
+        constructor(){
+          this.palette = [
+            1.00, 0.50, 0.00,
+            1.00, 0.00, 0.00,
+            0.00, 0.20, 1.00,
+            0.20, 1.00, 0.00,
+          ];
+        }
+        
+        release(){
+          if(this.pos) this.pos.release();
+        }
+        
+        create(verts){
+          this.release();
+          this.pos = gl.newBuffer(verts, 3, gl.FLOAT);
+        }
+        
+        display(shader){
+          var num_verts = this.pos.vtxCount;
+          shader.attribute('pos', this.pos);
+          shader.uniformI('num_verts', num_verts);
+          shader.uniformF('palette', this.palette, this.palette.length / 3);
+          // gl.lineWidth(4.0);
+          gl.drawArrays(gl.LINE_STRIP, 0, num_verts);
+        }
+      };
+      
+
+      var DEPTH = 4; 
+      var SIZE = 300;                     // hilbert curve params
+      var SXD, SYD, SZD;                  // cube corners (precomputed for each depth)
+      var SX = [-1,-1,-1,-1,+1,+1,+1,+1]; // corner directions for x
+      var SY = [+1,+1,-1,-1,-1,-1,+1,+1]; // corner directions for y
+      var SZ = [-1,+1,+1,-1,-1,+1,+1,-1]; // corner directions for z
+      
+      var memoryusage = 0;
+      var creationtime = 0;
+      
+      var vptr;
+      var verts;
+
+      function createHilbertCurve(depth){
+        
+        DEPTH = depth !== undefined ? depth : DEPTH;
+        DEPTH = Dw.clamp(DEPTH, 1, 8);
+
+        // precompute cube corners for each depth
+        SXD = new Array(DEPTH);
+        SYD = new Array(DEPTH);
+        SZD = new Array(DEPTH);
+        for(var i = 0; i < DEPTH; i++){
+          SXD[i] = new Float32Array(8);
+          SYD[i] = new Float32Array(8);
+          SZD[i] = new Float32Array(8);
+        }
+
+        var s = SIZE/2;
+        for(var i = DEPTH - 1; i >= 0; i--, s/=2){
+          for(var j = 0; j < 8; j++){
+            SXD[i][j] = SX[j] * s; 
+            SYD[i][j] = SY[j] * s;
+            SZD[i][j] = SZ[j] * s;
+          }
+        }
+        
+        
+        // create curve
+        var num_verts = Math.pow(8, DEPTH);
+        var timer = performance.now();
+
+        vptr = 0;
+        verts = new Float32Array(num_verts * 3);
+        
+        hilbert3D(0,0,0, DEPTH, 0,1,2,3,4,5,6,7);
+
+        hilbertcurve.create(verts);
+        
+        creationtime = (performance.now() - timer).toFixed(0);
+        memoryusage  = (verts.length * 4) >> 20; // >> 20 MB
+        
+        console.log("hilbertcurve "+creationtime +"ms");
+        console.log("  depth "+ DEPTH);
+        console.log("  verts "+ num_verts);
+        console.log("  memory: "+ memoryusage+"mb"); 
+      }
+      
+      
+      // HilbertCurve 3D (c) Thomas Diewald
+      function hilbert3D(x, y, z, d, A, B, C, D, E, F, G, H) {
+        if (d-- === 0)  {
+          verts[vptr++] = x;
+          verts[vptr++] = y;
+          verts[vptr++] = z;  
+        } else {
+          const sxd = SXD[d], syd = SYD[d], szd = SZD[d];        
+          hilbert3D(x + sxd[A], y + syd[A], z + szd[A], d, A, D, E, H, G, F, C, B ); 
+          hilbert3D(x + sxd[B], y + syd[B], z + szd[B], d, A, H, G, B, C, F, E, D ); 
+          hilbert3D(x + sxd[C], y + syd[C], z + szd[C], d, A, H, G, B, C, F, E, D ); 
+          hilbert3D(x + sxd[D], y + syd[D], z + szd[D], d, C, D, A, B, G, H, E, F ); 
+          hilbert3D(x + sxd[E], y + syd[E], z + szd[E], d, C, D, A, B, G, H, E, F ); 
+          hilbert3D(x + sxd[F], y + syd[F], z + szd[F], d, E, D, C, F, G, B, A, H ); 
+          hilbert3D(x + sxd[G], y + syd[G], z + szd[G], d, E, D, C, F, G, B, A, H ); 
+          hilbert3D(x + sxd[H], y + syd[H], z + szd[H], d, G, F, C, B, A, D, E, H ); 
+        }
+      }
+        
+
+      app.resize = function(w, h){
+        easycam.setViewport([0,0,w,h]);
+      }
+
+      app.draw = function(){
+        var w = canvas.width;
+        var h = canvas.height;
+        
+        // projection
+        mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 1, 20000);
+        mat4.scale(m4_projection, m4_projection, [1,-1,1]);
+      
+        // camera
+        mat4.identity(m4_modelview);
+        
+        // apply cam
+        // orbit.update().apply(m4_modelview);
+        easycam.update().apply(m4_modelview);
+
+        var cam_dist = easycam.getDistance();
+        
+        // normal matrix: inverse transpose modelview
+        mat3.normalFromMat4(m3_normals, m4_modelview);
+
+        var gray = 0.0 / 255.0;
+        
+        gl.viewport(0, 0, w, h);
+        gl.colorMask(true, true, true, true);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(gray, gray, gray, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      
+        // apply shader
+        shader.begin();
+        shader.uniformM('m4_projection', m4_projection);
+        shader.uniformM('m4_modelview', m4_modelview);
+        shader.uniformF('cam_dist', cam_dist);
+        hilbertcurve.display(shader);
+        shader.end();
+        
+        HUD();
+      }
+      
+      app.release = function(){
+        shader.release();
+        hilbertcurve.release();
+      }
+      
+      function HUD(){
+        var w = canvas.width;
+        var h = canvas.height;
+        var fps = app.framerate;
+        var stats = '';
+        stats += 'wh: '+w+'/'+h;
+        stats += ' - fps: '+fps.toFixed(2);
+        stats += ' - vertices: '+hilbertcurve.pos.vtxCount;
+        stats += ' - depth: '+DEPTH;
+        stats += ' - memory: '+memoryusage+'MB';
+        stats += ' - time: '+creationtime+'ms';
+        document.getElementById('sketch-stats').textContent = stats;
+      }
+      
+    });
+    
+  </script>
+  
+</body>
+
+</html>
+

@@ -1,0 +1,556 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script>
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+  
+<script id="webgl2.fs_grayscott" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision mediump int;
+  #endif
+
+  #define FRAG_CLAMP 1
+
+  out vec2 outfrag;
+
+  uniform vec2 wh_rcp;
+  uniform sampler2D tex;
+
+  uniform float dA  ;
+  uniform float dB  ;
+  uniform float feed;
+  uniform float kill;
+  uniform float dt  ;
+
+  void main () {
+
+    vec2 posn = gl_FragCoord.xy * wh_rcp;
+    vec2 val = texture(tex, posn).rg;  
+    vec2 lap = -val;
+    
+    lap += textureOffset(tex, posn, ivec2(-1, 0)).rg * 0.20;
+    lap += textureOffset(tex, posn, ivec2(+1, 0)).rg * 0.20;
+    lap += textureOffset(tex, posn, ivec2( 0,-1)).rg * 0.20;
+    lap += textureOffset(tex, posn, ivec2( 0,+1)).rg * 0.20;
+    lap += textureOffset(tex, posn, ivec2(-1,-1)).rg * 0.05;
+    lap += textureOffset(tex, posn, ivec2(+1,-1)).rg * 0.05;
+    lap += textureOffset(tex, posn, ivec2(-1,+1)).rg * 0.05;
+    lap += textureOffset(tex, posn, ivec2(+1,+1)).rg * 0.05;
+    
+    float nA = dA * lap.r - val.r * val.g * val.g + feed * (1.0 - val.r);
+    float nB = dB * lap.g + val.r * val.g * val.g - (feed + kill) * val.g;
+    
+    outfrag = val + vec2(nA, nB) * dt;
+    
+  #if FRAG_CLAMP
+    outfrag = clamp(outfrag, vec2(0.0), vec2(1.0));
+  #endif
+  }
+</script>
+
+
+
+
+
+<script id="webgl2.fs_display" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision mediump int;
+  #endif
+
+  out vec4 outfrag;
+
+  uniform vec2 wh_rcp;
+  uniform sampler2D tex;
+  
+  #define STEPS 7
+  uniform vec3 PALLETTE[STEPS]; 
+  
+  vec3 getShading(float val){
+    val = clamp(val, 0.0, 0.99999);
+    float lum_steps = val * float(STEPS-1);
+    float frac = fract(lum_steps);
+    int id = int(floor(lum_steps));
+    return mix(PALLETTE[id], PALLETTE[id+1], frac);
+  }
+  
+  void main () {
+    float val = texture(tex, gl_FragCoord.xy * wh_rcp).r;   
+    outfrag = vec4(getShading(val*val), 1.0);
+  }
+</script>
+
+
+
+
+<script id="webgl2.fs_interaction" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision mediump int;
+  #endif
+
+  out vec4 outfrag;
+
+  struct Circle {
+    vec2  pos;
+    float rad;
+    float pow;
+    vec2  sxy;
+    vec4  col;
+  };
+  
+  uniform Circle circle;
+ 
+  void main () {
+    
+    vec2 diff = gl_FragCoord.xy - circle.pos;
+    float len = length(diff * circle.sxy);
+    float kd = smoothstep(circle.rad, 0.0, len);
+    kd = pow(kd, circle.pow);
+    outfrag = circle.col * kd;
+  }
+</script>
+
+
+
+
+
+
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+    
+    var app;
+    var canvas;
+    var gl;
+    
+    var shader_grayscott;
+    var shader_display;
+    var shader_interaction;
+    
+    
+    // framebuffer
+    var fbo;
+
+    // tex-struct (ping-pong)
+    var tex = {
+      src : null,
+      dst : null,
+      swap : function(){
+        var tmp = this.src;
+        this.src = this.dst;
+        this.dst = tmp;
+      },
+      resize: function(w,h){
+        this.src.resize(w,h);
+        this.dst.resize(w,h);
+      },
+    };
+    
+      
+
+    // offscreen resolution scale factor.
+    var SCREEN_SCALE = 1.0; 
+    
+    // reaction diffusion settings and presets
+    var rdDef = {
+      da      : 1.0,
+      db      : 0.6,
+      feed    : 0.04,
+      kill    : 0.06,
+      dt      : 1.0,
+      iter    : 10,
+      brush   : 100,
+      reset   : initRD,
+      preset0 : function() {  this.feed = 0.040; this.kill = 0.060; this.da = 1.00; this.db = 0.60; },
+      preset1 : function() {  this.feed = 0.034; this.kill = 0.059; this.da = 1.00; this.db = 0.60; },
+      preset2 : function() {  this.feed = 0.080; this.kill = 0.060; this.da = 1.00; this.db = 0.40; },
+      preset3 : function() {  this.feed = 0.015; this.kill = 0.050; this.da = 1.00; this.db = 0.60; },
+      preset4 : function() {  this.feed = 0.072; this.kill = 0.062; this.da = 0.50; this.db = 0.25; },
+      preset5 : function() {  this.feed = 0.071; this.kill = 0.063; this.da = 0.40; this.db = 0.20; },
+      preset6 : function() {  this.feed = 0.023; this.kill = 0.052; this.da = 0.50; this.db = 0.50; },
+      preset7 : function() {  this.feed = 0.029; this.kill = 0.056; this.da = 0.60; this.db = 0.46; },
+      
+      pallette : [],
+      
+      randomColors : function(){
+        for(var i = 1; i < this.pallette.length-1; i++){
+          var r = Math.random() * 0.9 + 0.1;
+          var g = Math.random() * r;
+          var b = Math.max(1-r-g, 0);
+          this.pallette[i][0] = Math.min(Math.max(r, 0), 1) * 255;
+          this.pallette[i][1] = Math.min(Math.max(g, 0), 1) * 255;
+          this.pallette[i][2] = Math.min(Math.max(b, 0), 1) * 255;
+        }
+      },
+    
+      color0 : function(){
+        var i = 0;
+        this.pallette[i++] = [255, 255, 255];
+        this.pallette[i++] = [153, 204, 255];
+        this.pallette[i++] = [ 51, 102, 204];
+        this.pallette[i++] = [102,   0,  51];
+        this.pallette[i++] = [255, 204, 102];
+        this.pallette[i++] = [102,  51,   0];
+        this.pallette[i++] = [255, 255, 255];
+        return this.pallette;
+      },
+      
+      color1 : function(){
+        var i = 0;
+        this.pallette[i++] = [255, 255, 255];
+        this.pallette[i++] = [234, 167,   0];
+        this.pallette[i++] = [160,  64,  24];
+        this.pallette[i++] = [  0,   0,   0];
+        this.pallette[i++] = [ 80,   8,   0];
+        this.pallette[i++] = [  0,   0,   0];
+        this.pallette[i++] = [255, 255, 255];
+        return this.pallette;
+      },
+      
+    };
+
+
+    var initGUI = function(){
+      var gui = new dat.GUI();
+      
+      var settings = gui.addFolder('Values');
+      settings.add(rdDef, 'da'   , 0.01, 1.00  ).listen();
+      settings.add(rdDef, 'db'   , 0.01, 1.00  ).listen();
+      settings.add(rdDef, 'feed' , 0.01, 0.09).listen();
+      settings.add(rdDef, 'kill' , 0.01, 0.09).listen();
+      settings.add(rdDef, 'dt'   , 0.01, 1);
+      settings.add(rdDef, 'iter' , 1, 80);
+      settings.add(rdDef, 'brush', 20, 300);
+      settings.add(rdDef, 'reset');
+      
+      var presets = gui.addFolder('Presets');
+      presets.add(rdDef, 'preset0');
+      presets.add(rdDef, 'preset1');
+      presets.add(rdDef, 'preset2');
+      presets.add(rdDef, 'preset3');
+      presets.add(rdDef, 'preset4');
+      presets.add(rdDef, 'preset5');
+      presets.add(rdDef, 'preset6');
+      presets.add(rdDef, 'preset7');
+  
+      rdDef.color1();
+  
+      var colors = gui.addFolder('Colors');
+      for(var i = 0; i < rdDef.pallette.length; i++){
+        colors.addColor(rdDef.pallette, i).listen();
+      }
+      colors.add(rdDef, 'color0');
+      colors.add(rdDef, 'color1');
+      colors.add(rdDef, 'randomColors');
+      
+      settings.open();
+      colors.open();
+      colors.open();
+    }
+    
+    
+    function init(){
+      console.log(this);
+      app = this;
+    }
+    
+    
+    function setup(){
+      
+      canvas = this.canvas;
+      gl = this.gl;
+       
+      var w = canvas.width;
+      var h = canvas.height;
+      
+      // beeing lazy ... load all available extensions.
+      gl.newExt(gl.getSupportedExtensions(), true);
+
+      // create Shader
+      var fs_grayscott = document.getElementById("webgl2.fs_grayscott").textContent;
+      shader_grayscott = new Dw.Shader(gl, {fs:fs_grayscott});
+      
+      var fs_display = document.getElementById("webgl2.fs_display").textContent;
+      shader_display = new Dw.Shader(gl, {fs:fs_display});
+      
+      var fs_interaction = document.getElementById("webgl2.fs_interaction").textContent;
+      shader_interaction = new Dw.Shader(gl, {fs:fs_interaction});
+
+      
+      // create FrameBuffer for offscreen rendering
+      fbo = gl.newFramebuffer();
+      
+      // create Textures for multipass rendering
+      var def = {
+        target   : gl.TEXTURE_2D,
+        iformat  : gl.RG32F,
+        format   : gl.RG,
+        type     : gl.FLOAT,
+        wrap     : gl.CLAMP_TO_EDGE,
+        filter   : [gl.NEAREST, gl.LINEAR],
+      }
+
+      var tex_w = Math.ceil(w * SCREEN_SCALE);
+      var tex_h = Math.ceil(h * SCREEN_SCALE);
+
+      tex.src = gl.newTexture(tex_w, tex_h, def);
+      tex.dst = gl.newTexture(tex_w, tex_h, def);
+      
+      initRD();
+      
+      initGUI();
+
+    }
+    
+
+    function resize(w, h){
+      tex.resize(w,h);
+      initRD();
+    }
+    
+    function draw(){
+      var w = canvas.width;
+      var h = canvas.height;
+      
+      // Reaction Diffusion - Multipass
+      updateRD();
+      
+      // display result
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.DEPTH_TEST);
+ 
+      var color_steps = rdDef.pallette.length;
+      shader_display.frag.setDefine('STEPS', color_steps);
+
+      shader_display.viewport(0, 0, w, h);
+      shader_display.begin();
+      for(var i = 0; i < color_steps; i++){
+        var rgb = rdDef.pallette[i];
+        shader_display.uniformF('PALLETTE['+i+']', [rgb[0]/255, rgb[1]/255, rgb[2]/255]); 
+      }
+      shader_display.uniformT('tex', tex.src);
+      shader_display.uniformF('wh_rcp', [1.0/w, 1.0/h]);
+      shader_display.quad();
+      shader_display.end();
+      
+      // update HUD
+      HUD();
+    }
+    
+    var release = function(){
+      console.log("release");
+    }
+    
+    function HUD(){
+      var w = canvas.width;
+      var h = canvas.height;
+      var fps = app.framerate;
+      var stats = '';
+      stats += 'wh: '+w+'/'+h+' | ';
+      stats += 'fps: '+fps.toFixed(2);
+      document.getElementById('sketch-stats').textContent = stats;
+    }
+    
+    
+
+    
+    function initRD(){
+      var gl = fbo.gl;
+      
+      // bind framebuffer and texture for offscreenrendering
+      fbo.begin(tex.dst);
+      
+      var w = tex.dst.w;
+      var h = tex.dst.h;
+      
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(1.0, 0.0, 0.0, 0.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.disable(gl.DEPTH_TEST);
+      
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      // gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+      // gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+      // gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+  
+      shader_interaction.begin();
+      
+      shader_interaction.uniformF('circle.pos', [w/2, h/2]);
+      shader_interaction.uniformF('circle.rad', [100*SCREEN_SCALE]);
+      shader_interaction.uniformF('circle.pow', [1.0]);
+      shader_interaction.uniformF('circle.sxy', [1,1]);
+      shader_interaction.uniformF('circle.col', [0,1,0,0]);
+      shader_interaction.quad();
+      
+      shader_interaction.uniformF('circle.pos', [w/2-200*SCREEN_SCALE, h/2-200*SCREEN_SCALE]);
+      shader_interaction.uniformF('circle.rad', [200*SCREEN_SCALE]);
+      shader_interaction.uniformF('circle.pow', [1.0]);
+      shader_interaction.uniformF('circle.sxy', [1,1]);
+      shader_interaction.uniformF('circle.col', [0,1,0,0]);
+      shader_interaction.quad();
+      
+      shader_interaction.uniformF('circle.pos', [w/2-100*SCREEN_SCALE, h/2]);
+      shader_interaction.uniformF('circle.rad', [100*SCREEN_SCALE]);
+      shader_interaction.uniformF('circle.pow', [1.0]);
+      shader_interaction.uniformF('circle.sxy', [1,1]);
+      shader_interaction.uniformF('circle.col', [0,1,0,0]);
+      shader_interaction.quad();
+      
+      
+      
+      shader_interaction.end();
+
+      tex.swap();
+      fbo.end();
+    }
+    
+    
+    function updateRD(){
+      
+      var w = canvas.width;
+      var h = canvas.height;
+      
+      var mx = app.mouse.x;
+      var my = app.mouse.y; my = h - 1 - my;
+      
+      mx *= SCREEN_SCALE;
+      my *= SCREEN_SCALE;
+      
+      var rad = rdDef.brush * SCREEN_SCALE;
+      
+      var LMB = app.mouse.LMB;
+      var RMB = app.mouse.RMB;
+      
+
+      var gl = fbo.gl;
+   
+      
+      fbo.begin(tex.src);
+      var w_src = tex.src.w;
+      var h_src = tex.src.h;
+      
+      gl.viewport(0, 0, w_src, h_src);
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      // gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+      // gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+      // gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+  
+      if(LMB || RMB){
+        shader_interaction.begin();
+        shader_interaction.uniformF('circle.pos', [mx, my]);
+        shader_interaction.uniformF('circle.rad', [rad]);
+        shader_interaction.uniformF('circle.pow', [1.0]);
+        shader_interaction.uniformF('circle.sxy', [1,1]);
+        
+        if(LMB) gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+        if(RMB) gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+        
+        shader_interaction.uniformF('circle.col', [0.1,0.1,0,0]);
+        shader_interaction.quad();
+        shader_interaction.end();
+      }
+      fbo.end();
+      
+             
+      // multipass rendering (ping-pong)
+      for(var i = 0; i < rdDef.iter; i++){
+        
+        // set texture as rendertarget
+        fbo.begin(tex.dst);
+        
+        var w_src = tex.dst.w;
+        var h_src = tex.dst.h;
+     
+        // clear texture
+        gl.viewport(0, 0, w_src, h_src);
+        // gl.clearColor(1.0, 0.0, 0.0, 0.0);
+        // gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.disable(gl.DEPTH_TEST);
+        
+        // blendmode is replace, so no need to clear the colorbuffer
+        gl.enable(gl.BLEND);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.ONE, gl.ZERO, gl.ONE, gl.ONE);
+        
+        // apply shader
+        shader_grayscott.begin();
+        shader_grayscott.uniformF("dA"    , [rdDef.da]);
+        shader_grayscott.uniformF("dB"    , [rdDef.db]);
+        shader_grayscott.uniformF("feed"  , [rdDef.feed]);
+        shader_grayscott.uniformF("kill"  , [rdDef.kill]);
+        shader_grayscott.uniformF("dt"    , [rdDef.dt]);
+        shader_grayscott.uniformF("wh_rcp", [1.0/w_src, 1.0/h_src]);
+        shader_grayscott.uniformT("tex"   , tex.src);
+        shader_grayscott.quad();
+        shader_grayscott.end();
+
+        // ping-pong
+        tex.swap();
+      }
+      
+      fbo.end();
+    }
+
+    
+    Dw.start('Reaction Diffusion');
+    
+    
+  </script>
+  
+</body>
+
+</html>
+

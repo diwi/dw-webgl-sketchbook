@@ -1,0 +1,270 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <!-- <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script> -->
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+  
+<script id="webgl2.vs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 pos;
+  in vec3 col;
+  
+  uniform mat4 m4_projection;
+  uniform mat4 m4_modelview;
+  
+  out vec3 vcol;
+  
+  void main(){
+    gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
+    vcol = col;
+  }
+</script>
+
+
+<script id="webgl2.fs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 vcol;
+  out vec4 fragcol;
+  
+  void main(){
+    fragcol = vec4(vcol, 1);
+  }
+</script>
+
+    
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+    
+    Dw.start('Cubes VBO Test', function(app){
+      
+      var canvas;
+      var gl;
+      
+      var shader;
+      var cubes;
+      
+      var m4_modelview  = mat4.create();
+      var m4_projection = mat4.create();
+      
+      var orbit;
+      var easycam;
+      
+      app.init = function(){
+        console.log(this);
+        app.webgl_attributes.antialias = true;
+      }
+      
+      
+      app.setup = function(){
+        
+        canvas = this.canvas;
+        gl = this.gl;
+        
+        console.log(canvas);
+        console.log(gl);
+        console.log(this === app);
+        console.log(Dw);
+        
+        orbit = new Dw.OrbitControl(this);
+        easycam = new Dw.EasyCam(this, {distance: 800});
+        
+        var w = canvas.width;
+        var h = canvas.height;
+
+        // create Shader
+        var vs = document.getElementById("webgl2.vs_draw").textContent;
+        var fs = document.getElementById("webgl2.fs_draw").textContent;
+        
+        shader = new Dw.Shader(gl, {vs:vs, fs:fs});
+        
+    
+        //  4---------5
+        //  |\        |\
+        //  | \       | \
+        //  |  6---------7
+        //  |  |      |  |
+        //  0--|------1  |
+        //   \ |       \ |
+        //    \|        \|
+        //     2---------3
+       
+        
+        var verts = new Float32Array([
+          -1,-1,-1, // 0
+          +1,-1,-1, // 1
+          -1,+1,-1, // 2
+          +1,+1,-1, // 3
+          
+          -1,-1,+1, // 4
+          +1,-1,+1, // 5
+          -1,+1,+1, // 6
+          +1,+1,+1, // 7
+        ]);
+        
+        var faces = new Float32Array([
+          0, 1, 2,   2, 1, 3, // bottom
+          4, 6, 5,   5, 6, 7, // top
+          0, 2, 4,   4, 2, 6, // left
+          3, 1, 7,   7, 1, 5, // right
+          2, 3, 6,   6, 3, 7, // front
+          1, 0, 5,   5, 0, 4, // back
+        ]);
+        
+        
+        var num_cubes = 10000;
+        var num_verts = faces.length;
+        
+        var pos = new Float32Array(num_cubes * num_verts * 3);
+        var col = new Float32Array(num_cubes * num_verts * 3);
+        
+        var ipos = 0;
+        var icol = 0;
+        var inml = 0;
+        
+        for(var i = 0; i < num_cubes; i++){
+          var tx = (Dw.random() * 2 - 1) * w * 0.3;
+          var ty = (Dw.random() * 2 - 1) * h * 0.3;
+          var tz = (Dw.random() * 2 - 1) * h * 0.3;
+          
+          var sx = Dw.random() * 5 + 3;
+          var sy = Dw.random() * 5 + 3;
+          var sz = Dw.random() * 5 + 3;
+          
+          for(var j = 0; j < num_verts; j++){
+            var vi = faces[j] * 3;
+            var x = verts[vi++];
+            var y = verts[vi++];
+            var z = verts[vi++];
+            
+            pos[ipos++] = x * sx + tx;
+            pos[ipos++] = y * sy + ty;
+            pos[ipos++] = z * sz + tz;
+            
+            col[icol++] = x * 0.5 + 0.5; 
+            col[icol++] = y * 0.5 + 0.5; 
+            col[icol++] = z * 0.5 + 0.5;
+          }
+        }
+        
+        cubes = {
+          pos : gl.newBuffer(pos, 3, gl.FLOAT),
+          col : gl.newBuffer(col, 3, gl.FLOAT),
+        };
+      }
+      
+      app.resize = function(w, h){
+        easycam.setViewport([0,0,w,h]);
+      }
+
+      app.draw = function(){
+        var w = canvas.width;
+        var h = canvas.height;
+        
+        // projection
+        mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 1, 20000);
+        mat4.scale(m4_projection, m4_projection, [1,-1,1]);
+      
+        // camera
+        mat4.identity(m4_modelview);
+        
+        // apply cam
+        orbit.update().apply(m4_modelview);
+        // easycam.update().apply(m4_modelview);
+        
+        var gray = 8 / 255.0;
+        
+      
+        gl.viewport(0, 0, w, h);
+        gl.colorMask(true, true, true, true);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(gray, gray, gray, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      
+        // apply shader
+        shader.begin();
+        shader.uniformM('m4_projection', m4_projection);
+        shader.uniformM('m4_modelview', m4_modelview);
+        shader.attribute('pos', cubes.pos);
+        shader.attribute('col', cubes.col);
+        gl.drawArrays(gl.TRIANGLES, 0, cubes.pos.vtxCount);
+        shader.end();
+        
+        HUD();
+      }
+      
+      app.release = function(){
+        console.log("release");
+      }
+      
+      function HUD(){
+        var w = canvas.width;
+        var h = canvas.height;
+        var fps = app.framerate;
+        var stats = '';
+        stats += 'wh: '+w+'/'+h+' | ';
+        stats += 'fps: '+fps.toFixed(2);
+        document.getElementById('sketch-stats').textContent = stats;
+      }
+      
+      
+    });
+    
+  </script>
+  
+</body>
+
+</html>
+

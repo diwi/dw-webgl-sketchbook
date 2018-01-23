@@ -1,0 +1,583 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <!-- <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script> -->
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+  
+<script id="webgl2.vs_displayNormals" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 pos;
+  in vec4 dir;
+
+  uniform mat4 m4_projection;
+  uniform mat4 m4_modelview;
+  uniform mat3 m3_normals;
+  
+  uniform float len;
+
+  out vec3 vnml;
+  out float vidx;
+  
+  void main(){
+    vnml = dir.xyz;
+    vidx = dir.w;
+    vec3 vpos = pos + vnml * vidx * len;
+    gl_Position = m4_projection * m4_modelview * vec4(vpos, 1.0);
+
+  }
+</script>
+
+
+<script id="webgl2.fs_displayNormals" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 vnml;
+  in float vidx;
+  
+  out vec4 fragcol;
+  
+  uniform mat3 m3_normals;
+  uniform int shadingtype;
+
+  void main(){
+    
+    vec3 normal = -vnml;
+
+    if(shadingtype == 2){
+      normal = normalize(m3_normals * vnml);
+    }
+    
+    fragcol = vec4(normal * vidx, 1);
+    fragcol.rgb  = pow(fragcol.rgb, vec3(1.0/2.2));
+  }
+</script>
+
+
+
+  
+  
+     
+<script id="webgl2.vs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 pos;
+  in vec3 col;
+  in vec3 nml;
+  
+  uniform mat4 m4_projection;
+  uniform mat4 m4_modelview;
+  uniform mat3 m3_normals;
+  uniform float pointsize;
+
+  out vec3 vpos;
+  out vec3 vcol;
+  out vec3 vnml;
+
+  void main(){
+    gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
+    vpos = (m4_modelview * vec4(pos, 1.0)).xyz;
+    vcol = col;
+    vnml = nml;
+    gl_PointSize = pointsize;
+  }
+</script>
+
+
+<script id="webgl2.fs_draw" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  in vec3 vpos;
+  in vec3 vcol;
+  in vec3 vnml;
+  
+  uniform mat3 m3_normals;
+
+  uniform int shadingtype;
+  uniform vec3 color_base;
+  uniform vec3 color_mult;
+  uniform float normalsmooth;
+  
+  float material_spec_exp = 10.0;
+  
+  out vec4 fragcol;
+  
+  vec3 getFragmentNormal(){
+
+    vec3 fnormal = normalize(cross(dFdx(vpos), -dFdy(vpos)));
+    vec3 vnormal = normalize(m3_normals * vnml) * (gl_FrontFacing ? 1.0 : -1.0);
+
+    if(normalsmooth == 0.0){
+      return fnormal;
+    }
+    if(normalsmooth == 1.0){
+      return vnormal;
+    }
+    return mix(fnormal, vnormal, normalsmooth);
+  }
+  
+  
+  float getKd(vec3 vertNormal, vec3 lightDir){
+    return max(dot(-lightDir, vertNormal), 0.0);
+    // return abs(dot(-lightDir, vertNormal));
+  }
+  
+  float getKs(vec3 vertNormal, vec3 lightDir, vec3 vertDir){
+    lightDir = normalize(reflect(lightDir, vertNormal));
+    return pow(max(dot(lightDir, vertDir), 0.0), material_spec_exp);
+  }
+  
+  void main(){
+    
+    vec3 normal = getFragmentNormal();
+    vec3 light  = normalize(vpos);
+    vec3 vert   = -normalize(vpos);
+    
+    float kd = getKd(normal, light);
+    float ks = getKs(normal, light, vert) * kd;
+    
+    vec3 rgb = color_base;
+    if(shadingtype == 1) {
+      rgb = (normalize(vnml));  
+      rgb = max(-rgb, vec3(0.0));
+      rgb = pow(rgb, vec3(0.7));
+      rgb = rgb * 0.98 + 0.02;
+    }
+    else if(shadingtype == 2){
+      rgb = normal;
+    } 
+    else if(shadingtype == 4){
+      rgb = vec3(0.5, 0.05, 0.05);
+    }
+    
+    vec3 col = kd * rgb + ks * (rgb * 0.9 + 0.1);
+    
+    fragcol = vec4(col, 1);
+    fragcol.rgb *= color_mult;
+    fragcol.rgb  = pow(fragcol.rgb, vec3(1.0/2.2));
+  }
+</script>
+
+    
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+    <div id="sketch-controls"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+
+    var app;
+    var canvas;
+    var gl;
+    
+    var shader;
+    var shaderNormals;
+    var models = [];
+    
+    var m4_modelview  = newMat(mat4);
+    var m4_projection = newMat(mat4);
+    var m3_normals    = newMat(mat3);
+       
+    var orbit;
+    
+    function init(){
+      console.log(this);
+      console.log(Dw);
+      app = this;
+      app.webgl_attributes.antialias = true;
+    }
+    
+    function newMat(matX){
+      var mat = matX.create();
+      
+      mat.stack = [];
+      mat.push =  function(){
+        this.stack.push(matX.clone(this));
+      }
+      
+      mat.pop =  function(){
+        matX.copy(this, this.stack.pop());
+      }
+      
+      if(matX === mat4){
+        mat.translate = function(x,y,z){
+          matX.translate(this, this, [x,y,z]);
+        }
+      }
+      
+      return mat;
+    }
+    
+    
+    var setup = function(){
+      
+      canvas = this.canvas;
+      gl = this.gl;
+     
+      // orbit = new Dw.OrbitControl(this);
+      orbit = new Dw.EasyCam(this, {distance: 1000});
+      
+      // create Shader
+      var vs, fs;
+      vs = document.getElementById("webgl2.vs_draw").textContent;
+      fs = document.getElementById("webgl2.fs_draw").textContent;
+      shader = new Dw.Shader(gl, {vs:vs, fs:fs});
+      
+      vs = document.getElementById("webgl2.vs_displayNormals").textContent;
+      fs = document.getElementById("webgl2.fs_displayNormals").textContent;
+      shaderNormals = new Dw.Shader(gl, {vs:vs, fs:fs});
+
+      var i = 0;
+      var icos     = models[i++] = new Model(Dw.createIcosahedron(300, 2));
+      var cube     = models[i++] = new Model(Dw.createCube(300, 2));
+      var sphere   = models[i++] = new Model(Dw.createSphere(300));
+      var plane    = models[i++] = new Model(Dw.createPlane(300, 300, 4, 4));
+      var torus    = models[i++] = new Model(Dw.createTorus(300, 120, 64, 32, 0));  
+      var box      = models[i++] = new Model(Dw.createBox(300, 300, 300, 1, 1, 1));  
+      var circle   = models[i++] = new Model(Dw.createCircle(300, 64, !true));  
+      var tube     = models[i++] = new Model(Dw.createTube(300, 0, 300, 32, 1));  
+      var cylinder = models[i++] = new Model(Dw.createCylinder(300, 300, 300, 32, 1));
+       
+    }
+
+    
+    var keyup = function(ev){
+      for(var i = 0; i < models.length; i++){
+        var model = models[i];
+        if(ev.key === '1') model.display_faces   = !model.display_faces;
+        if(ev.key === '2') model.display_verts   = !model.display_verts;
+        if(ev.key === '3') model.display_edges   = !model.display_edges;
+        if(ev.key === '4') model.display_normals = !model.display_normals;
+        if(ev.key === 's') model.smooth          = !model.smooth;
+        if(ev.key === 't') model.shading_type    = (model.shading_type + 1) % 5;
+      }
+    }
+    
+    var ctrl_info = " - ";
+    ctrl_info += "'1' Faces - ";
+    ctrl_info += "'2' Vertices - ";
+    ctrl_info += "'3' Edges - ";
+    ctrl_info += "'4' Normals - ";
+    ctrl_info += "'s' Smooth - ";
+    ctrl_info += "'t' Shading Type - ";
+    document.getElementById('sketch-controls').textContent = ctrl_info;
+    
+   
+    class Model {
+      
+      constructor(ifs){
+        // parent
+        this.ifs = ifs;
+        
+        
+        var verts_num = ifs.verts_num;
+        var npos = this.vnormal_pos = new Float32Array(verts_num * 2 * 3);
+        var ndir = this.vnormal_dir = new Int8Array(verts_num * 2 * 4);
+        
+        var vsrc, ipos = 0, idir = 0, iidx = 0;
+        var px, py, pz;
+        var nx, ny, nz;
+        
+        for(var i = 0; i < verts_num; i++){
+          vsrc = i * 3;
+          px = ifs.verts[vsrc+0];
+          py = ifs.verts[vsrc+1];
+          pz = ifs.verts[vsrc+2];
+          
+          nx = (ifs.vnml[vsrc+0] * 127) & 0xFF;
+          ny = (ifs.vnml[vsrc+1] * 127) & 0xFF;
+          nz = (ifs.vnml[vsrc+2] * 127) & 0xFF;
+          
+          npos[ipos++] = px; npos[ipos++] = py; npos[ipos++] = pz;
+          npos[ipos++] = px; npos[ipos++] = py; npos[ipos++] = pz;
+          
+          ndir[idir++] = nx; ndir[idir++] = ny; ndir[idir++] = nz; ndir[idir++] = 0;
+          ndir[idir++] = nx; ndir[idir++] = ny; ndir[idir++] = nz; ndir[idir++] = 127;
+        }
+
+        // vbos
+        this.pos = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
+        this.col = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
+        this.vnm = gl.newBuffer(ifs.vnml, 3, gl.FLOAT);
+        this.idx = gl.newBuffer(ifs.triangles, 1, gl.UNSIGNED_INT, gl.ELEMENT_ARRAY_BUFFER);
+        
+        this.vnml_pos = gl.newBuffer(this.vnormal_pos, 3, gl.FLOAT);
+        this.vnml_dir = gl.newBuffer(this.vnormal_dir, 4, gl.BYTE);
+   
+        // render settings
+        this.smooth = false;
+        this.display_faces   = true;
+        this.display_verts   = false;
+        this.display_edges   = false;
+        this.display_normals = true;
+        
+        this.pointsize = 3.0;
+        this.linewidth = 1.0; // doesnt work?
+        this.shading_type = 1; 
+        this.normal_len = 80.0;
+        
+        this.m4_projection = mat4.create();
+        this.m4_modelview  = mat4.create();
+        this.m3_normals    = mat3.create();
+      }
+     
+      release(){
+        this.pos.release();
+        this.col.release();
+        this.vnm.release();
+        this.idx.release();
+        
+        this.vnml_pos.release();
+        this.vnml_dir.release();
+      }
+      
+      saveCurrentTransformations(){
+        mat4.copy(this.m4_projection, m4_projection);
+        mat4.copy(this.m4_modelview , m4_modelview );
+        mat3.copy(this.m3_normals   , m3_normals   );
+      }
+
+      displayNormals(shader){
+        if(this.display_normals){
+          shader.attribute('pos', this.vnml_pos);
+          shader.attribute('dir', this.vnml_dir, false, true);
+          
+          shader.uniformM('m4_projection', this.m4_projection);
+          shader.uniformM('m4_modelview' , this.m4_modelview);
+          shader.uniformM('m3_normals'   , this.m3_normals);
+          
+          shader.uniformF('len', this.normal_len);
+          shader.uniformI('shadingtype', this.shading_type);
+          gl.drawArrays(gl.LINES, 0, this.vnml_pos.vtxCount);
+        }
+      }
+      
+      display(shader){
+
+        shader.attribute('pos', this.pos);
+        shader.attribute('col', this.col);
+        shader.attribute('nml', this.vnm);
+        this.idx.bind();
+        
+        var display_faces = this.display_faces;
+        var display_edges = this.display_edges && this.linewidth > 0;
+        var display_verts = this.display_verts && this.pointsize > 0;
+        
+        gl.frontFace(gl.CW);
+        gl.disable(gl.CULL_FACE);
+
+        var normalsmooth = 1.0;
+        if(!this.smooth){
+          normalsmooth = Dw.clampedmap(app.mouse.x, 200, app.canvas.width-200, 0, 1);
+          normalsmooth = 0.2;
+        }
+
+        shader.uniformI('shadingtype', this.shading_type);
+        shader.uniformF('color_base' , [1.0, 1.0, 1.0]);
+        shader.uniformF('normalsmooth', normalsmooth);
+        
+        shader.uniformM('m4_projection', this.m4_projection);
+        shader.uniformM('m4_modelview' , this.m4_modelview);
+        shader.uniformM('m3_normals'   , this.m3_normals);
+             
+        if(display_faces){
+          var mult = 1.0;
+          shader.uniformF('color_mult' , [mult, mult, mult]);
+          gl.drawElements(gl.TRIANGLES, this.idx.vtxCount, this.idx.type, 0);
+        }
+
+        if(display_edges || display_verts){
+          var mult = 3.0;
+          shader.uniformF('color_mult' , [mult, mult, mult]);
+          shader.uniformF('normalsmooth', 1.0); // use vertex normal
+          
+          if(display_edges){
+            gl.lineWidth(this.linewidth);
+            gl.drawElements(gl.LINES, this.idx.vtxCount, this.idx.type, 0);
+          }
+          
+          if(display_verts){
+            shader.uniformF('pointsize', [this.pointsize]);
+            gl.drawElements(gl.POINTS, this.idx.vtxCount, this.idx.type, 0);
+          }
+        }
+      }
+      
+    };
+    
+    
+
+    
+    var resize = function(w, h){
+    }
+
+
+    
+    function draw(){
+      var w = canvas.width;
+      var h = canvas.height;
+      
+      // projection
+      mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 1, 60000);
+      mat4.scale(m4_projection, m4_projection, [1,-1,1]);
+    
+      // camera
+      mat4.identity(m4_modelview);
+      
+      // apply cam
+      orbit.update().apply(m4_modelview);
+      
+      // update only needed after rotations are applied to the modelview matrix
+      mat3.normalFromMat4(m3_normals, m4_modelview);
+
+      // build model transformations
+      var spacing = 900;
+      var nx = Math.ceil(Math.sqrt(models.length));
+      var ny = models.length / nx;
+      var dimx = spacing * (nx-1);
+      var dimy = spacing * (ny-1);
+      m4_modelview.push();
+      m4_modelview.translate(-dimx/2, -dimy/2, 0);
+      for(var iy = 0; iy < ny; iy++){
+        m4_modelview.push();
+        for(var ix = 0; ix < nx; ix++){
+          var idx = iy * nx + ix;
+          if(idx < models.length){
+            models[idx].saveCurrentTransformations();
+          }
+          m4_modelview.translate(spacing, 0, 0);
+        }
+        m4_modelview.pop();
+        m4_modelview.translate(0, spacing, 0);
+      }
+      m4_modelview.pop();
+
+            
+      var gray = 16.0 / 255.0;
+      gl.viewport(0, 0, w, h);
+      gl.colorMask(true, true, true, true);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.DEPTH_TEST);
+      gl.clearColor(gray, gray, gray, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      
+      
+      // render models
+      shader.begin();
+      for(var i = 0; i < models.length; i++){
+        models[i].display(shader);
+      }
+      shader.end();
+      
+      
+      // render normals
+      shaderNormals.begin();
+      for(var i = 0; i < models.length; i++){
+        models[i].displayNormals(shaderNormals);
+      }
+      shaderNormals.end();
+      
+      
+ 
+      /*
+      for(var i = 0; i < models.length; i++){
+        // render model
+        shader.begin();
+        models[i].display(shader);
+        shader.end();
+        
+        // render normals
+        shaderNormals.begin();
+        models[i].displayNormals(shaderNormals);
+        shaderNormals.end();
+      }
+      */
+
+
+      HUD();
+    }
+    
+    var release = function(){
+      shader.release();
+      for(var i = 0; i < models.length; i++){
+        models[i].release();
+      }
+    }
+    
+    function HUD(){
+      var w = canvas.width;
+      var h = canvas.height;
+      var fps = app.framerate;
+      var stats = '';
+      stats += 'wh: '+w+'/'+h;
+      stats += ' - fps: '+fps.toFixed(2);
+      document.getElementById('sketch-stats').textContent = stats;
+    }
+
+
+ 
+    Dw.start('Normals Display');
+
+  </script>
+  
+</body>
+
+</html>
+

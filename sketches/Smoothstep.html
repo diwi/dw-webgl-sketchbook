@@ -1,0 +1,274 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <!-- <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script> -->
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+  
+<script id="webgl2.fs_display" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision mediump int;
+  #endif
+
+  out vec4 outfrag;
+
+  uniform vec2 wh_rcp;
+  uniform sampler2D tex;
+  
+  #define STEPS 7
+  uniform vec3 PALLETTE[STEPS]; 
+  
+  vec3 getShading(float val){
+    val = clamp(val, 0.0, 0.99999);
+    float lum_steps = val * float(STEPS-1);
+    float frac = fract(lum_steps);
+    int id = int(floor(lum_steps));
+    return mix(PALLETTE[id], PALLETTE[id+1], frac);
+  }
+  
+  void main () {
+    float val = texture(tex, gl_FragCoord.xy * wh_rcp).r;   
+    outfrag = vec4(getShading(1.0-val), 1.0);
+    // outfrag = vec4(vec3(val), 1.0);
+  }
+</script>
+
+
+
+
+
+<script id="webgl2.fs_interaction" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision mediump int;
+  #endif
+
+  out vec4 outfrag;
+
+  struct Circle {
+    vec2  pos;
+    float rad;
+    float pow;
+    vec2  sxy;
+    float mul;
+  };
+  
+  uniform Circle circle;
+  
+  float smootherstep(float edge0, float edge1, float x) {
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+  }
+ 
+  void main () {
+    vec2 diff = gl_FragCoord.xy - circle.pos;
+    float len = length(diff * circle.sxy);
+    float kd = smoothstep(circle.rad, 0.0, len);
+    kd = pow(kd, circle.pow);
+    outfrag = vec4(kd) * circle.mul;
+  }
+</script>
+
+ 
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+    
+    Dw.start('Smoothstep', function(app){
+      
+      var canvas;
+      var gl;
+      
+      var shader_display;
+      var shader_interaction;
+           
+      // framebuffer
+      var fbo;
+      var tex;
+      
+
+      var pallette = [
+        1.00, 1.00, 1.00,
+        0.10, 0.00, 0.20,
+        0.00, 0.40, 0.80,
+        1.00, 1.00, 1.00,
+        0.40, 0.00, 0.20,
+        1.00, 0.80, 0.40,
+        0.50, 0.25, 0.12,
+        1.00, 1.00, 1.00,
+      ];
+      
+
+      app.init = function(){
+        console.log(this);
+      }
+      
+      app.setup = function(){
+        
+        canvas = this.canvas;
+        gl = this.gl;
+         
+        var w = canvas.width;
+        var h = canvas.height;
+        
+        // beeing lazy ... load all available extensions.
+        gl.newExt(gl.getSupportedExtensions(), true);
+
+        // create Shader
+        var fs_display = document.getElementById("webgl2.fs_display").textContent;
+        shader_display = new Dw.Shader(gl, {fs:fs_display});
+        
+        var fs_interaction = document.getElementById("webgl2.fs_interaction").textContent;
+        shader_interaction = new Dw.Shader(gl, {fs:fs_interaction});
+
+        // create Textures for multipass rendering
+        var def = {
+          target   : gl.TEXTURE_2D,
+          // iformat  : gl.RGBA32F,
+          // format   : gl.RGBA,
+          iformat  : gl.R32F,
+          format   : gl.RED,
+          type     : gl.FLOAT,
+          wrap     : gl.CLAMP_TO_EDGE,
+          filter   : [gl.NEAREST, gl.LINEAR],
+        }
+
+        tex = gl.newTexture(w, h, def);
+        
+        // create FrameBuffer for offscreen rendering
+        fbo = gl.newFramebuffer();
+    
+        fbo.begin(tex);
+        gl.viewport(0, 0, w, h);
+        gl.colorMask(true, true, true, true);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        fbo.end();
+      }
+      
+      app.resize = function(w, h){
+        fbo.resize(w,h);
+      }
+      
+
+      app.draw = function(){
+        var w = canvas.width;
+        var h = canvas.height;
+        
+ 
+        // set texture as rendertarget
+        fbo.begin(tex);
+        var w_dst = tex.w;
+        var h_dst = tex.h;
+        
+        gl.viewport(0, 0, w_dst, h_dst);
+        
+        
+        gl.enable(gl.BLEND);
+        gl.blendEquation(gl.FUNC_ADD);
+        // gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE);
+        // gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE, gl.ONE, gl.ONE);
+       // gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+        
+        var mx = app.mouse.x;
+        var my = app.mouse.y; my = h - 1 - my;
+
+        shader_interaction.begin();
+        shader_interaction.uniformF('circle.pos', [mx, my]);
+        shader_interaction.uniformF('circle.rad', [100]);
+        shader_interaction.uniformF('circle.pow', [1.0]);
+        shader_interaction.uniformF('circle.sxy', [1,1]);
+        shader_interaction.uniformF('circle.mul', [1]);
+        shader_interaction.quad();
+        shader_interaction.end();
+        fbo.end();
+
+        gl.viewport(0, 0, w, h);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.disable(gl.BLEND);
+        gl.disable(gl.DEPTH_TEST);
+
+        // display result
+        
+        var pallette_steps = pallette.length / 3;
+        shader_display.frag.setDefine('STEPS', pallette_steps);
+        shader_display.viewport(0, 0, w, h);
+        shader_display.begin();
+        shader_display.uniformF('PALLETTE', pallette, pallette_steps); 
+        shader_display.uniformT('tex', tex);
+        shader_display.uniformF('wh_rcp', [1.0/w, 1.0/h]);
+        shader_display.quad();
+        shader_display.end();
+        
+        HUD();
+      }
+      
+      app.release = function(){
+        console.log("release");
+      }
+      
+      function HUD(){
+        var w = canvas.width;
+        var h = canvas.height;
+        var fps = app.framerate;
+        var stats = '';
+        stats += 'wh: '+w+'/'+h+' | ';
+        stats += 'fps: '+fps.toFixed(2);
+        document.getElementById('sketch-stats').textContent = stats;
+      }
+      
+      
+    });
+    
+  </script>
+  
+</body>
+
+</html>
+

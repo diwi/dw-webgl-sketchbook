@@ -1,0 +1,114 @@
+<html lang="en">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  
+  <script src="../lib/gl-matrix-2.4.0/gl-matrix-min.js"></script>
+  <!-- <script src="../lib/dat.gui-0.6.5/dat.gui.min.js"></script> -->
+  
+  <script src="../dwgl/dw_gl.js"></script>
+  <script src="../dwgl/dw_utils.js"></script>
+  <script src="../dwgl/dw_app.js"></script>
+  <script src="../dwgl/dw_orbit.js"></script>
+  <script src="../dwgl/dw_easycam.js"></script>
+  <script src="../dwgl/dw_geometry.js"></script>
+  
+  <link rel="stylesheet" href="../css/style.css">
+
+
+<script>
+/**
+ *
+ *  dw-webgl-sketchbook: https://github.com/diwi/dw-webgl-sketchbook
+ *
+ *  Copyright 2018 by Thomas Diewald, https://www.thomasdiewald.com
+ *
+ *  MIT License: https://opensource.org/licenses/MIT
+ *
+ */
+</script>
+
+
+    
+</head>
+<body>
+
+  <div id="hud">
+    <div id="sketch-title"></div>
+    <div id="sketch-stats"></div>
+    <div id="sketch-controls"></div>
+  </div>
+  
+  <script>
+
+    'use strict';
+    
+    document.oncontextmenu = function() { return false; }
+    document.onmousedown   = function() { return false; }
+
+    Dw.start('Setup (Local)', function(app){
+    
+      var canvas;
+      var gl;
+      
+      app.init = function(){
+        app = this;
+        app.webgl_attributes.antialias = true;
+      }
+      
+      app.setup = function(){
+        canvas = this.canvas;
+        gl = this.gl;
+        console.log(Dw);
+        console.log(this);
+      }
+     
+      app.resize = function(w, h){
+      }
+      
+      app.draw = function(){
+        HUD();
+      }
+      
+      app.release = function(){
+      }
+      
+      app. keyup = function(ev){
+        console.log("keyup", ev.key);
+      }
+      app. keydown = function(ev){
+        console.log("keydown", ev.key);
+      }
+      app. mousedown = function(ev){
+        console.log("mousedown", ev);
+      }
+      app. mouseup = function(ev){
+        console.log("mouseup", ev);
+      }
+      app. mousemove = function(ev){
+        // console.log("mousemove", ev);
+      }
+      app. dblclick = function(ev){
+        console.log("dblclick", ev);
+      }
+      app. click = function(ev){
+        console.log("click", ev);
+      }
+            
+      function HUD(){
+        var w = canvas.width;
+        var h = canvas.height;
+        var fps = app.framerate;
+        var stats = '';
+        stats += 'wh: '+w+'/'+h;
+        stats += ' - fps: '+fps.toFixed(2);
+        document.getElementById('sketch-stats').textContent = stats;
+      }
+    });
+
+  </script>
+  
+</body>
+</html>
+

@@ -1,0 +1,97 @@
+:root {
+}
+
+.unselectable{
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -o-user-select: none;
+  user-select: none;
+}
+
+.selectable-text{
+  -moz-user-select: text;
+  -webkit-user-select: text;
+  -ms-user-select: text;
+  -o-user-select: text;
+  user-select: text;
+}
+
+*{
+  margin: 0px;
+  padding: 0px;
+}
+
+html{
+  width:100%;
+  height:100%;
+}
+
+body{
+  width:100%;
+  height:100%;
+  background-color: rgba(0,0,0,1);
+  font-family: FontAwesome, Optima, Segoe, Segoe UI, Candara, Calibri, Arial, sans-serif;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: 1px;
+  font-size: small;
+  color: rgb(96, 96, 96);
+}
+
+#Dw-Canvas,
+#DwCanvas{
+  z-index : 0;
+  position: absolute;
+  margin: auto;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+#hud{
+  z-index : 2;
+  position: absolute;
+  margin: auto;
+  top : 0;
+  left: 0;
+  right: 0;
+  padding: 10px;
+  background: rgba(0,0,0,0.8);
+  color: #FFF;
+  text-align: center;
+}
+
+#sketch-title {
+  /* color: #99ccff; */
+  margin-bottom: 7;
+}
+
+#sketch-stats {
+  /* font-weight: lighter; */
+  /* letter-spacing: 0; */
+  font-size: smaller;
+  color: #ffa64c;
+}
+
+#sketch-controls {
+  font-weight: lighter;
+  /* letter-spacing: 0; */
+  font-size: smaller;
+  color: #ffa64c;
+}
+
+
+.dg.ac {
+  z-index : 12;
+}
+
+
+
+
+
