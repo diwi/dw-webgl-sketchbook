@@ -319,7 +319,7 @@
         return 1.0 + (Math.random()*2-1) * 0.10;
       }
 
-      // Menger Sponge (c) Tthomas Diewald
+      // Menger Sponge (c) Thomas Diewald
       function mengerSponge(x, y, z, s, F){ 
         if(ELIMINATION_MODE && (F & 0x00FFFFFF) === 0 ) return; // box got completely eliminated 
         if((F & 0x0F000000) === DEPTH) {

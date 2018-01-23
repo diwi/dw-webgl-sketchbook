@@ -24,7 +24,7 @@ The demos require a browser that supports webgl2.
 ![DeconstructionCubes2_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/DeconstructionCubes2_small1.jpg)
 ![HilbertCurve2_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/HilbertCurve2_small1.jpg)
 ![MengerSponge1_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/MengerSponge1_small1.jpg)
-![MengerSponge1_small2](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/MengerSponge1_small2.jpg)
+![MengerSponge1_small2](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/MengerSponge2_small1.jpg)
 ![NormalsDisplay_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/NormalsDisplay_small1.jpg)
 ![PerPixelPhong1_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/PerPixelPhong1_small1.jpg)
 ![PerPixelPhong_Primitives1_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/PerPixelPhong_Primitives1_small1.jpg)
