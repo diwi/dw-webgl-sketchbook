@@ -288,9 +288,9 @@
      
       display(shader){
 
-        shader.attribute('pos', this.pos);
-        shader.attribute('col', this.col);
-        shader.attribute('nml', this.vnm);
+        shader.attributeF('pos', this.pos);
+        shader.attributeF('col', this.col);
+        shader.attributeF('nml', this.vnm);
         this.idx.bind();
         
         var display_faces = this.display_faces;

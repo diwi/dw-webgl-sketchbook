@@ -242,8 +242,8 @@
           
           shader.uniformF('palette', this.palette, this.palette.length / 3);
           
-          shader.attribute('pos'  , this.pos);
-          shader.attribute('depth', this.depth, true);
+          shader.attributeF('pos'  , this.pos);
+          shader.attributeI('depth', this.depth);
 
           gl.drawArrays(gl.TRIANGLES, 0, this.pos.vtxCount);
         }

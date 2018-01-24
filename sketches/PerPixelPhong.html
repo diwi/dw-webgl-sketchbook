@@ -425,10 +425,10 @@
       }
    
       display(shader){
-        shader.attribute('pos', this.pos);
-        shader.attribute('col', this.col);
-        shader.attribute('nml', this.vnm);
-        shader.attribute('mID', this.mID, true);
+        shader.attributeF('pos', this.pos);
+        shader.attributeF('col', this.col);
+        shader.attributeF('nml', this.vnm);
+        shader.attributeI('mID', this.mID);
         this.idx.bind();
         gl.frontFace(gl.CW);
         gl.disable(gl.CULL_FACE);

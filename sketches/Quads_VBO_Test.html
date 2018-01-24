@@ -210,8 +210,8 @@
         shader.begin();
         shader.uniformM('m4_projection', m4_projection);
         shader.uniformM('m4_modelview', m4_modelview);
-        shader.attribute('pos', rect_pos);
-        shader.attribute('col', rect_col);
+        shader.attributeF('pos', rect_pos);
+        shader.attributeF('col', rect_col);
         gl.drawArrays(gl.TRIANGLES, 0, rect_pos.vtxCount);
         shader.end();
         

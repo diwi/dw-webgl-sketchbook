@@ -289,9 +289,9 @@
           nml : gl.newBuffer(nml, 3, gl.FLOAT),
           
           display : function(shader){
-            shader.attribute('pos', this.pos);
-            shader.attribute('col', this.col);
-            shader.attribute('nml', this.nml);
+            shader.attributeF('pos', this.pos);
+            shader.attributeF('col', this.col);
+            shader.attributeF('nml', this.nml);
             gl.drawArrays(gl.TRIANGLES, 0, this.pos.vtxCount);
           },
         };

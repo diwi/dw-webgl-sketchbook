@@ -395,8 +395,8 @@
 
       displayNormals(shader){
         if(this.display_normals){
-          shader.attribute('pos', this.vnml_pos);
-          shader.attribute('dir', this.vnml_dir, false, true);
+          shader.attributeF('pos', this.vnml_pos);
+          shader.attributeF('dir', this.vnml_dir, 0, 0, true);
           
           shader.uniformM('m4_projection', this.m4_projection);
           shader.uniformM('m4_modelview' , this.m4_modelview);
@@ -410,9 +410,9 @@
       
       display(shader){
 
-        shader.attribute('pos', this.pos);
-        shader.attribute('col', this.col);
-        shader.attribute('nml', this.vnm);
+        shader.attributeF('pos', this.pos);
+        shader.attributeF('col', this.col);
+        shader.attributeF('nml', this.vnm);
         this.idx.bind();
         
         var display_faces = this.display_faces;

@@ -689,25 +689,66 @@ class Shader {
   }
   
 
-  attribute(name, vbo, IS_INTEGER = false, normalize = false, stride = 0){
+  attributeF(name, vbo, stride = 0, offset = 0, normalize = false){
     var gl = this.gl;
     var loc = this.attributeLoc(name);
     if(loc >= 0){
       gl.bindBuffer(vbo.target, vbo);
-      if(IS_INTEGER){
-        // attribute must be integer type
-        gl.vertexAttribIPointer(loc, vbo.vtxSize, vbo.type, stride, 0);
-      } else {
-        // attribute must be float type, vbo can still be int
-        gl.vertexAttribPointer(loc, vbo.vtxSize, vbo.type, normalize, stride, 0);
-      }
+      gl.vertexAttribPointer(loc, vbo.vtxSize, vbo.type, normalize, stride, offset);
       gl.enableVertexAttribArray(loc);
       gl.bindBuffer(vbo.target, null);
     }
     return loc;
   }
   
-
+  attributeI(name, vbo, stride = 0, offset = 0){
+    var gl = this.gl;
+    var loc = this.attributeLoc(name);
+    if(loc >= 0){
+      gl.bindBuffer(vbo.target, vbo);
+      gl.vertexAttribIPointer(loc, vbo.vtxSize, vbo.type, stride, 0);
+      gl.enableVertexAttribArray(loc);
+      gl.bindBuffer(vbo.target, null);
+    }
+    return loc;
+  }
+   
+  attributeFV(name, val, arraylen = 1){
+    var gl = this.gl;
+    var loc = this.attributeLoc(name);
+    if(loc >= 0){
+      var type = val.length / arraylen;
+      switch(type){
+        case 1: gl.vertexAttrib1fv(loc, val); break; 
+        case 2: gl.vertexAttrib2fv(loc, val); break; 
+        case 3: gl.vertexAttrib3fv(loc, val); break; 
+        case 4: gl.vertexAttrib4fv(loc, val); break;
+      }
+    }
+    return loc;
+  }
+  
+  attributeIV(name, val){
+    var gl = this.gl;
+    var loc = this.attributeLoc(name);
+    if(loc >= 0){
+      gl.vertexAttribI4iv(loc, val); break;
+    }
+    return loc;
+  }
+  
+  attributeUV(name, val){
+    var gl = this.gl;
+    var loc = this.attributeLoc(name);
+    if(loc >= 0){
+      gl.vertexAttribI4uiv(loc, val); break;
+    }
+    return loc;
+  }
+  
+  
+  
+  // Float
   uniformF(name, val, arraylen = 1){
     var gl = this.gl;
     var loc = this.uniformLoc(name);
@@ -728,6 +769,7 @@ class Shader {
     }
   }
   
+  // Integer
   uniformI(name, val, arraylen = 1){
     var gl = this.gl;
     var loc = this.uniformLoc(name);
@@ -748,6 +790,28 @@ class Shader {
     }
   }
   
+  // Unsigned
+  uniformU(name, val, arraylen = 1){
+    var gl = this.gl;
+    var loc = this.uniformLoc(name);
+    if(loc){
+      
+      if(val.constructor !== Array || val.length === 1){
+        gl.uniform1ui(loc, val);
+        return;
+      }
+      
+      var type = val.length / arraylen;
+      switch(type){
+        case 1: gl.uniform1uiv(loc, val, 0, 1 * arraylen); break; 
+        case 2: gl.uniform2uiv(loc, val, 0, 2 * arraylen); break; 
+        case 3: gl.uniform3uiv(loc, val, 0, 3 * arraylen); break; 
+        case 4: gl.uniform4uiv(loc, val, 0, 4 * arraylen); break;
+      }
+    }
+  }
+  
+  // Matrix
   uniformM(name, val, arraylen = 1){
     var gl = this.gl;
     var loc = this.uniformLoc(name);
@@ -761,6 +825,7 @@ class Shader {
     }
   }
   
+  // Texture
   uniformT(name, val){
     var gl = this.gl;
     var loc = this.uniformLoc(name);
@@ -794,7 +859,7 @@ class Shader {
   
   quad(){
     var gl = this.gl;
-    this.attribute('pos', this.fsq_vbo);
+    this.attributeF('pos', this.fsq_vbo);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   

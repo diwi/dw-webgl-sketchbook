@@ -201,7 +201,7 @@
         
         display(shader){
           var num_verts = this.pos.vtxCount;
-          shader.attribute('pos', this.pos);
+          shader.attributeF('pos', this.pos);
           shader.uniformI('num_verts', num_verts);
           shader.uniformF('palette', this.palette, this.palette.length / 3);
           // gl.lineWidth(4.0);

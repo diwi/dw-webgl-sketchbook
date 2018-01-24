@@ -168,9 +168,9 @@ class App {
     this.release = ('undefined' !== typeof release) ? release : null;
     
     // input events
-    this.mousedown  = ('undefined' !== typeof mousedown ) ? mousedown  : null;
-    this.mouseup    = ('undefined' !== typeof mouseup   ) ? mouseup    : null;
     this.mousemove  = ('undefined' !== typeof mousemove ) ? mousemove  : null;
+    this.mouseup    = ('undefined' !== typeof mouseup   ) ? mouseup    : null;
+    this.mousedown  = ('undefined' !== typeof mousedown ) ? mousedown  : null;
     this.click      = ('undefined' !== typeof click     ) ? click      : null;
     this.dblclick   = ('undefined' !== typeof dblclick  ) ? dblclick   : null;
     this.touchstart = ('undefined' !== typeof touchstart) ? touchstart : null;
@@ -198,16 +198,16 @@ class App {
     this.mouse.attach(this.canvas);
     
     // input events
-    if(this.mousedown ) document.addEventListener('mousedown' , this.mousedown .bind(this), false);
-    if(this.mouseup   ) document.addEventListener('mouseup'   , this.mouseup   .bind(this), false);
-    if(this.mousemove ) document.addEventListener('mousemove' , this.mousemove .bind(this), false);
-    if(this.click     ) document.addEventListener('click'     , this.click     .bind(this), false);
-    if(this.dblclick  ) document.addEventListener('dblclick'  , this.dblclick  .bind(this), false);
-    if(this.touchstart) document.addEventListener('touchstart', this.touchstart.bind(this), false);
-    if(this.touchend  ) document.addEventListener('touchend'  , this.touchend  .bind(this), false);
-    if(this.touchmove ) document.addEventListener('touchmove' , this.touchmove .bind(this), false);
-    if(this.keyup     ) document.addEventListener('keyup'     , this.keyup     .bind(this), false);
-    if(this.keydown   ) document.addEventListener('keydown'   , this.keydown   .bind(this), false);
+    if(this.mousemove ) document   .addEventListener('mousemove' , this.mousemove .bind(this), false);
+    if(this.mouseup   ) document   .addEventListener('mouseup'   , this.mouseup   .bind(this), false);
+    if(this.mousedown ) this.canvas.addEventListener('mousedown' , this.mousedown .bind(this), false);
+    if(this.click     ) this.canvas.addEventListener('click'     , this.click     .bind(this), false);
+    if(this.dblclick  ) this.canvas.addEventListener('dblclick'  , this.dblclick  .bind(this), false);
+    if(this.touchstart) this.canvas.addEventListener('touchstart', this.touchstart.bind(this), false);
+    if(this.touchend  ) this.canvas.addEventListener('touchend'  , this.touchend  .bind(this), false);
+    if(this.touchmove ) this.canvas.addEventListener('touchmove' , this.touchmove .bind(this), false);
+    if(this.keyup     ) window     .addEventListener('keyup'     , this.keyup     .bind(this), false);
+    if(this.keydown   ) window     .addEventListener('keydown'   , this.keydown   .bind(this), false);
     // ... tbc ...
     
     if(this.gl){
