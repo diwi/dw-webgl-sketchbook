@@ -732,7 +732,7 @@ class Shader {
     var gl = this.gl;
     var loc = this.attributeLoc(name);
     if(loc >= 0){
-      gl.vertexAttribI4iv(loc, val); break;
+      gl.vertexAttribI4iv(loc, val);
     }
     return loc;
   }
