@@ -369,6 +369,7 @@
       app.webgl_attributes.antialias = true;
     }
     
+    
     function newMat(matX){
       var mat = matX.create();
       
@@ -482,6 +483,7 @@
         this.m3_normals    = mat3.create();
       }
       
+      
       createNormals() {
         var ifs = this.ifs;
         var verts = ifs.verts;
@@ -516,8 +518,6 @@
         this.vnml_pos = gl.newBuffer(this.vnormal_pos, 3, gl.FLOAT);
         this.vnml_dir = gl.newBuffer(this.vnormal_dir, 4, gl.BYTE);
       }
-      
-      
       
       
       createEdges() {
@@ -600,7 +600,6 @@
       }
         
 
-     
       release(){
         this.pos.release();
         this.col.release();
@@ -635,8 +634,6 @@
         }
       }
       
-      
-
       displayNormals(shader){
         if(this.display_normals){
           shader.attributeF('pos', this.vnml_pos);
@@ -653,9 +650,6 @@
       }
       
       display(shader){
-      
-      gl.bindVertexArray(null);
-
         shader.attributeF('pos', this.pos);
         shader.attributeF('col', this.col);
         shader.attributeF('nml', this.vnm);
@@ -757,13 +751,12 @@
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
       
       
-      // render models
+      // render faces
       shader.begin();
       for(var i = 0; i < models.length; i++){
         models[i].display(shader);
       }
       shader.end();
-      
       
       // render normals
       shaderNormals.begin();
@@ -772,30 +765,14 @@
       }
       shaderNormals.end();
       
-      
+      // render edges
       shaderEdges.begin();
       for(var i = 0; i < models.length; i++){
         models[i].displayEdges(shaderEdges);
       }
       shaderEdges.end();
+
       
-
- 
-      /*
-      for(var i = 0; i < models.length; i++){
-        // render model
-        shader.begin();
-        models[i].display(shader);
-        shader.end();
-        
-        // render normals
-        shaderNormals.begin();
-        models[i].displayNormals(shaderNormals);
-        shaderNormals.end();
-      }
-      */
-
-
       HUD();
     }
     
