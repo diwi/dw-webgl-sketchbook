@@ -220,17 +220,19 @@
             0.14, 0.00, 0.00,
             0.00, 0.00, 0.00,
           ];
+          
+          this.pos   = gl.newBuffer();
+          this.depth = gl.newBuffer();
         }
         
         release(){
-          if(this.pos  ) this.pos  .release();
-          if(this.depth) this.depth.release();
+          this.pos  .release();
+          this.depth.release();
         }
         
         create(verts, depth){
-          this.release();
-          this.pos   = gl.newBuffer(verts, 3, gl.FLOAT);
-          this.depth = gl.newBuffer(depth, 1, gl.BYTE);
+          this.pos  .resize(verts, 3, gl.FLOAT);
+          this.depth.resize(depth, 1, gl.BYTE);
         }
         
         display(shader){

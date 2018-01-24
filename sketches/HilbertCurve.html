@@ -188,15 +188,15 @@
             0.00, 0.20, 1.00,
             0.20, 1.00, 0.00,
           ];
+          this.pos = gl.newBuffer();
         }
         
         release(){
-          if(this.pos) this.pos.release();
+          this.pos.release();
         }
         
         create(verts){
-          this.release();
-          this.pos = gl.newBuffer(verts, 3, gl.FLOAT);
+          this.pos.resize(verts, 3, gl.FLOAT);
         }
         
         display(shader){
