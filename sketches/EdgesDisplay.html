@@ -30,6 +30,129 @@
 </script>
 
 
+
+<script id="webgl2.vs_displayEdges" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  // Part of the Processing project - http://processing.org
+  // Copyright (c) 2012-15 The Processing Foundation
+  // Copyright (c) 2004-12 Ben Fry and Casey Reas
+  // Copyright (c) 2001-04 Massachusetts Institute of Technology
+  // This library is free software; you can redistribute it and/or
+  // modify it under the terms of the GNU Lesser General Public
+  // License as published by the Free Software Foundation, version 2.1.
+  // This library is distributed in the hope that it will be useful,
+  // but WITHOUT ANY WARRANTY; without even the implied warranty of
+  // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  // Lesser General Public License for more details.
+  // You should have received a copy of the GNU Lesser General
+  // Public License along with this library; if not, write to the
+  // Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+  // Boston, MA  02111-1307  USA
+
+  uniform mat4 uModelViewMatrix;
+  uniform mat4 uProjectionMatrix;
+  uniform float uStrokeWeight;
+
+  uniform vec4 uViewport;
+  vec3 scale = vec3(0.99);
+
+  in vec4 aPosition;
+  in vec4 aDirection;
+    
+  void main() {
+    vec4 posp = uModelViewMatrix * aPosition;
+    vec4 posq = uModelViewMatrix * (aPosition + vec4(aDirection.xyz, 0));
+
+    // Moving vertices slightly toward the camera
+    // to avoid depth-fighting with the fill triangles.
+    // Discussed here:
+    // http://www.opengl.org/discussion_boards/ubbthreads.php?ubb=showflat&Number=252848  
+    posp.xyz = posp.xyz * scale;
+    posq.xyz = posq.xyz * scale;
+
+    vec4 p = uProjectionMatrix * posp;
+    vec4 q = uProjectionMatrix * posq;
+
+    // formula to convert from clip space (range -1..1) to screen space (range 0..[width or height])
+    // screen_p = (p.xy/p.w + <1,1>) * 0.5 * uViewport.zw
+
+    // prevent division by W by transforming the tangent formula (div by 0 causes
+    // the line to disappear, see https://github.com/processing/processing/issues/5183)
+    // t = screen_q - screen_p
+    //
+    // tangent is normalized and we don't care which aDirection it points to (+-)
+    // t = +- normalize( screen_q - screen_p )
+    // t = +- normalize( (q.xy/q.w+<1,1>)*0.5*uViewport.zw - (p.xy/p.w+<1,1>)*0.5*uViewport.zw )
+    //
+    // extract common factor, <1,1> - <1,1> cancels out
+    // t = +- normalize( (q.xy/q.w - p.xy/p.w) * 0.5 * uViewport.zw )
+    //
+    // convert to common divisor
+    // t = +- normalize( ((q.xy*p.w - p.xy*q.w) / (p.w*q.w)) * 0.5 * uViewport.zw )
+    //
+    // remove the common scalar divisor/factor, not needed due to normalize and +-
+    // (keep uViewport - can't remove because it has different components for x and y
+    //  and corrects for aspect ratio, see https://github.com/processing/processing/issues/5181)
+    // t = +- normalize( (q.xy*p.w - p.xy*q.w) * uViewport.zw )
+
+    vec2 tangent = normalize((q.xy*p.w - p.xy*q.w) * uViewport.zw);
+
+    // flip tangent to normal (it's already normalized)
+    vec2 normal = vec2(-tangent.y, tangent.x);
+
+    float thickness = aDirection.w * uStrokeWeight;
+    vec2 offset = normal * thickness / 2.0;
+
+    // Perspective ---
+    // convert from world to clip by multiplying with projection scaling factor
+    // to get the right thickness (see https://github.com/processing/processing/issues/5182)
+    // invert Y, projections in Processing invert Y
+    vec2 perspScale = (uProjectionMatrix * vec4(1, -1, 0, 0)).xy;
+
+    // No Perspective ---
+    // multiply by W (to cancel out division by W later in the pipeline) and
+    // convert from screen to clip (derived from clip to screen above)
+    vec2 noPerspScale = p.w / (0.5 * uViewport.zw);
+
+    //gl_Position.xy = p.xy + offset.xy * mix(noPerspScale, perspScale, float(perspective > 0));
+    gl_Position.xy = p.xy + offset.xy * perspScale;
+    gl_Position.zw = p.zw;
+  }
+
+</script>
+
+
+<script id="webgl2.fs_displayEdges" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  out vec4 fragcol;
+  
+  void main() {
+    fragcol = vec4(1.0,1.0,1.0,1.0);
+  }
+
+</script>
+
+
+
+
+
+
+
+
+
+
   
 <script id="webgl2.vs_displayNormals" type="x-shader/x-fragment">
   #version 300 es
@@ -229,6 +352,8 @@
     
     var shader;
     var shaderNormals;
+    var shaderEdges;
+    
     var models = [];
     
     var m4_modelview  = newMat(mat4);
@@ -283,6 +408,11 @@
       vs = document.getElementById("webgl2.vs_displayNormals").textContent;
       fs = document.getElementById("webgl2.fs_displayNormals").textContent;
       shaderNormals = new Dw.Shader(gl, {vs:vs, fs:fs});
+      
+      vs = document.getElementById("webgl2.vs_displayEdges").textContent;
+      fs = document.getElementById("webgl2.fs_displayEdges").textContent;
+      shaderEdges = new Dw.Shader(gl, {vs:vs, fs:fs});
+
 
       var i = 0;
       var icos     = models[i++] = new Model(Dw.createIcosahedron(300, 2));
@@ -326,8 +456,39 @@
         // parent
         this.ifs = ifs;
         
+        this.createNormals();
+        this.createEdges();
+
+        // vbos
+        this.pos = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
+        this.col = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
+        this.vnm = gl.newBuffer(ifs.vnml, 3, gl.FLOAT);
+        this.idx = gl.newBuffer(ifs.triangles, 1, gl.UNSIGNED_INT, gl.ELEMENT_ARRAY_BUFFER);
         
+        // render settings
+        this.smooth = false;
+        this.display_faces   = true;
+        this.display_verts   = false;
+        this.display_edges   = true;
+        this.display_normals = false;
+        
+        this.pointsize = 3.0;
+        this.linewidth = 1.0; // doesnt work?
+        this.shading_type = 2; 
+        this.normal_len = 80.0;
+        
+        this.m4_projection = mat4.create();
+        this.m4_modelview  = mat4.create();
+        this.m3_normals    = mat3.create();
+      }
+      
+      createNormals() {
+        var ifs = this.ifs;
+        var verts = ifs.verts;
+        var faces = ifs.faces;
         var verts_num = ifs.verts_num;
+        var faces_num = ifs.faces_num;
+        
         var npos = this.vnormal_pos = new Float32Array(verts_num * 2 * 3);
         var ndir = this.vnormal_dir = new Int8Array(verts_num * 2 * 4);
         
@@ -337,9 +498,9 @@
         
         for(var i = 0; i < verts_num; i++){
           vsrc = i * 3;
-          px = ifs.verts[vsrc+0];
-          py = ifs.verts[vsrc+1];
-          pz = ifs.verts[vsrc+2];
+          px = verts[vsrc+0];
+          py = verts[vsrc+1];
+          pz = verts[vsrc+2];
           
           nx = (ifs.vnml[vsrc+0] * 127) & 0xFF;
           ny = (ifs.vnml[vsrc+1] * 127) & 0xFF;
@@ -351,32 +512,94 @@
           ndir[idir++] = nx; ndir[idir++] = ny; ndir[idir++] = nz; ndir[idir++] = 0;
           ndir[idir++] = nx; ndir[idir++] = ny; ndir[idir++] = nz; ndir[idir++] = 127;
         }
-
-        // vbos
-        this.pos = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
-        this.col = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
-        this.vnm = gl.newBuffer(ifs.vnml, 3, gl.FLOAT);
-        this.idx = gl.newBuffer(ifs.triangles, 1, gl.UNSIGNED_INT, gl.ELEMENT_ARRAY_BUFFER);
         
         this.vnml_pos = gl.newBuffer(this.vnormal_pos, 3, gl.FLOAT);
         this.vnml_dir = gl.newBuffer(this.vnormal_dir, 4, gl.BYTE);
-   
-        // render settings
-        this.smooth = false;
-        this.display_faces   = true;
-        this.display_verts   = false;
-        this.display_edges   = false;
-        this.display_normals = true;
-        
-        this.pointsize = 3.0;
-        this.linewidth = 1.0; // doesnt work?
-        this.shading_type = 1; 
-        this.normal_len = 80.0;
-        
-        this.m4_projection = mat4.create();
-        this.m4_modelview  = mat4.create();
-        this.m3_normals    = mat3.create();
       }
+      
+      
+      
+      
+      createEdges() {
+        
+        var ifs = this.ifs;
+        var verts = ifs.verts;
+        var faces = ifs.faces;
+        var verts_num = ifs.verts_num;
+        var faces_num = ifs.faces_num;
+        
+        // count edges
+        var edges_num = 0;
+        for(var i = 0; i < faces_num; i++){
+          edges_num += faces[i].length;
+        }
+        
+        var epos = this.epos = new Float32Array(edges_num * (3+3) * 3);
+        var edir = this.edir = new Float32Array(edges_num * (3+3) * 4);
+        
+        var vptr = 0;
+        var dptr = 0;
+        
+        // create edge geometries
+        for(var i = 0; i < faces_num; i++){
+          var face = faces[i];
+          var num_faceverts = face.length;
+          for(var j = 0; j < num_faceverts; j++){
+            
+            // edge indices
+            var e0 = face[j                    ] * 3;
+            var e1 = face[(j+1) % num_faceverts] * 3;
+            
+            // edge vertices
+            var e0x = verts[e0  ];
+            var e0y = verts[e0+1];
+            var e0z = verts[e0+2];
+            
+            var e1x = verts[e1  ];
+            var e1y = verts[e1+1];
+            var e1z = verts[e1+2];
+            
+            // normalized edge direction
+            var dx = e1x - e0x;
+            var dy = e1y - e0y;
+            var dz = e1z - e0z;
+            var dd = dx*dx + dy*dy + dz*dz;
+            if(dd > 0 && dd !== 1.0){
+              dd = 1.0 / Math.sqrt(dd);
+              dx *= dd;
+              dy *= dd;
+              dz *= dd;
+            }
+            
+            //  a ------------      ------------ d
+            //  |                                |
+            // e0=============      =============e1
+            //  |                                |
+            //  b ------------      ------------ c
+             
+            epos[vptr++] = e0x; epos[vptr++] = e0y; epos[vptr++] = e0z; // a
+            epos[vptr++] = e0x; epos[vptr++] = e0y; epos[vptr++] = e0z; // b
+            epos[vptr++] = e1x; epos[vptr++] = e1y; epos[vptr++] = e1z; // c
+
+            epos[vptr++] = e1x; epos[vptr++] = e1y; epos[vptr++] = e1z; // c
+            epos[vptr++] = e1x; epos[vptr++] = e1y; epos[vptr++] = e1z; // d
+            epos[vptr++] = e0x; epos[vptr++] = e0y; epos[vptr++] = e0z; // a
+            
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = +1; // a
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = -1; // b
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = -1; // c
+                                                                                        
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = -1; // c
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = +1; // d
+            edir[dptr++] = dx; edir[dptr++] = dy; edir[dptr++] = dz; edir[dptr++] = +1; // a
+          }
+        }
+
+        this.ve_pos = gl.newBuffer(this.epos, 3, gl.FLOAT);
+        this.ve_dir = gl.newBuffer(this.edir, 4, gl.FLOAT);
+      }
+        
+
      
       release(){
         this.pos.release();
@@ -386,6 +609,9 @@
         
         this.vnml_pos.release();
         this.vnml_dir.release();
+        
+        this.ve_pos.release();
+        this.ve_dir.release();
       }
       
       saveCurrentTransformations(){
@@ -393,6 +619,23 @@
         mat4.copy(this.m4_modelview , m4_modelview );
         mat3.copy(this.m3_normals   , m3_normals   );
       }
+      
+      displayEdges(shader){
+        if(this.display_edges){
+          shader.attributeF('aPosition', this.ve_pos);
+          shader.attributeF('aDirection', this.ve_dir);
+          
+          shader.uniformM('uProjectionMatrix', this.m4_projection);
+          shader.uniformM('uModelViewMatrix' , this.m4_modelview);
+          // shader.uniformM('m3_normals'   , this.m3_normals);
+          shader.uniformF('uViewport' , [0,0,app.canvas.width, app.canvas.height]);
+          shader.uniformF('uStrokeWeight' , 5);
+          
+          gl.drawArrays(gl.TRIANGLES, 0, this.ve_pos.vtxCount);
+        }
+      }
+      
+      
 
       displayNormals(shader){
         if(this.display_normals){
@@ -445,20 +688,12 @@
           gl.drawElements(gl.TRIANGLES, this.idx.vtxCount, this.idx.type, 0);
         }
 
-        if(display_edges || display_verts){
+        if(display_verts){
           var mult = 3.0;
           shader.uniformF('color_mult' , [mult, mult, mult]);
           shader.uniformF('normalsmooth', 1.0); // use vertex normal
-          
-          if(display_edges){
-            gl.lineWidth(this.linewidth);
-            gl.drawElements(gl.LINES, this.idx.vtxCount, this.idx.type, 0);
-          }
-          
-          if(display_verts){
-            shader.uniformF('pointsize', [this.pointsize]);
-            gl.drawElements(gl.POINTS, this.idx.vtxCount, this.idx.type, 0);
-          }
+          shader.uniformF('pointsize', [this.pointsize]);
+          gl.drawElements(gl.POINTS, this.idx.vtxCount, this.idx.type, 0);
         }
       }
       
@@ -538,6 +773,13 @@
       shaderNormals.end();
       
       
+      shaderEdges.begin();
+      for(var i = 0; i < models.length; i++){
+        models[i].displayEdges(shaderEdges);
+      }
+      shaderEdges.end();
+      
+
  
       /*
       for(var i = 0; i < models.length; i++){
@@ -576,7 +818,7 @@
 
 
  
-    Dw.start('Normals Display');
+    Dw.start('Edges Display');
 
   </script>
   
