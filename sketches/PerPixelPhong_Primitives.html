@@ -488,13 +488,13 @@
       var aGui = new dat.GUI();
 
       var cAL = aGui.addFolder('Ambient Light');
-      cAL.addColor(ambientlight, 'col').listen();
+      cAL.addColor(ambientlight, 'col');
       
       var cDL = aGui.addFolder('Directional Lights');
       var dDL = [];
       for(var i = 0; i < directionallights.length; i++){
         dDL[i] = cDL.addFolder('DL '+i);
-        dDL[i].addColor(directionallights[i], 'col').listen();
+        dDL[i].addColor(directionallights[i], 'col');
       }
       dDL[0].open();
       
@@ -502,8 +502,8 @@
       var dPL = [];
       for(var i = 0; i < pointlights.length; i++){
         dPL[i] = cPL.addFolder('PL '+i);
-        dPL[i].addColor(pointlights[i], 'col').listen();
-        dPL[i].add     (pointlights[i], 'rad', 100, 8000).listen();
+        dPL[i].addColor(pointlights[i], 'col');
+        dPL[i].add     (pointlights[i], 'rad', 100, 8000);
         dPL[i].open();
       }
       cPL.open();
@@ -514,10 +514,10 @@
       var cMat = [];
       for(var i = 1; i < materials.length; i++){
         cMat[i] = bMaterials.addFolder('Material '+i);
-        cMat[i].add     (materials[i], 'spec_exp'    , 1, 500  ).listen();
-        cMat[i].add     (materials[i], 'normalsmooth', 0, 1.00  ).listen();
-        cMat[i].addColor(materials[i], 'diff').listen();
-        cMat[i].addColor(materials[i], 'spec').listen();
+        cMat[i].add     (materials[i], 'spec_exp'    , 1, 500 );
+        cMat[i].add     (materials[i], 'normalsmooth', 0, 1.00);
+        cMat[i].addColor(materials[i], 'diff');
+        cMat[i].addColor(materials[i], 'spec');
       }
       cMat[1].open();
     }

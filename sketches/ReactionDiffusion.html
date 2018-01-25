@@ -207,14 +207,14 @@
       iter    : 10,
       brush   : 100,
       reset   : initRD,
-      preset0 : function() {  this.feed = 0.040; this.kill = 0.060; this.da = 1.00; this.db = 0.60; },
-      preset1 : function() {  this.feed = 0.034; this.kill = 0.059; this.da = 1.00; this.db = 0.60; },
-      preset2 : function() {  this.feed = 0.080; this.kill = 0.060; this.da = 1.00; this.db = 0.40; },
-      preset3 : function() {  this.feed = 0.015; this.kill = 0.050; this.da = 1.00; this.db = 0.60; },
-      preset4 : function() {  this.feed = 0.072; this.kill = 0.062; this.da = 0.50; this.db = 0.25; },
-      preset5 : function() {  this.feed = 0.071; this.kill = 0.063; this.da = 0.40; this.db = 0.20; },
-      preset6 : function() {  this.feed = 0.023; this.kill = 0.052; this.da = 0.50; this.db = 0.50; },
-      preset7 : function() {  this.feed = 0.029; this.kill = 0.056; this.da = 0.60; this.db = 0.46; },
+      preset0 : function() {  this.feed = 0.040; this.kill = 0.060; this.da = 1.00; this.db = 0.60; if(gui) gui.updateDisplay(); },
+      preset1 : function() {  this.feed = 0.034; this.kill = 0.059; this.da = 1.00; this.db = 0.60; if(gui) gui.updateDisplay(); },
+      preset2 : function() {  this.feed = 0.080; this.kill = 0.060; this.da = 1.00; this.db = 0.40; if(gui) gui.updateDisplay(); },
+      preset3 : function() {  this.feed = 0.015; this.kill = 0.050; this.da = 1.00; this.db = 0.60; if(gui) gui.updateDisplay(); },
+      preset4 : function() {  this.feed = 0.072; this.kill = 0.062; this.da = 0.50; this.db = 0.25; if(gui) gui.updateDisplay(); },
+      preset5 : function() {  this.feed = 0.071; this.kill = 0.063; this.da = 0.40; this.db = 0.20; if(gui) gui.updateDisplay(); },
+      preset6 : function() {  this.feed = 0.023; this.kill = 0.052; this.da = 0.50; this.db = 0.50; if(gui) gui.updateDisplay(); },
+      preset7 : function() {  this.feed = 0.029; this.kill = 0.056; this.da = 0.60; this.db = 0.46; if(gui) gui.updateDisplay(); },
       
       pallette : [],
       
@@ -238,6 +238,7 @@
         this.pallette[i++] = [255, 204, 102];
         this.pallette[i++] = [102,  51,   0];
         this.pallette[i++] = [255, 255, 255];
+        if(gui) gui.updateDisplay();
         return this.pallette;
       },
       
@@ -250,20 +251,24 @@
         this.pallette[i++] = [ 80,   8,   0];
         this.pallette[i++] = [  0,   0,   0];
         this.pallette[i++] = [255, 255, 255];
+        if(gui) gui.updateDisplay();
         return this.pallette;
       },
       
     };
 
-
+    var gui;
     var initGUI = function(){
-      var gui = new dat.GUI();
+      
+      rdDef.color1();
+      
+      gui = new dat.GUI();
       
       var settings = gui.addFolder('Values');
-      settings.add(rdDef, 'da'   , 0.01, 1.00  ).listen();
-      settings.add(rdDef, 'db'   , 0.01, 1.00  ).listen();
-      settings.add(rdDef, 'feed' , 0.01, 0.09).listen();
-      settings.add(rdDef, 'kill' , 0.01, 0.09).listen();
+      var da = settings.add(rdDef, 'da'   , 0.01, 1.00  );
+      settings.add(rdDef, 'db'   , 0.01, 1.00  );
+      settings.add(rdDef, 'feed' , 0.01, 0.09);
+      settings.add(rdDef, 'kill' , 0.01, 0.09);
       settings.add(rdDef, 'dt'   , 0.01, 1);
       settings.add(rdDef, 'iter' , 1, 80);
       settings.add(rdDef, 'brush', 20, 300);
@@ -279,12 +284,14 @@
       presets.add(rdDef, 'preset6');
       presets.add(rdDef, 'preset7');
   
-      rdDef.color1();
-  
+
       var colors = gui.addFolder('Colors');
+      var gui_col = [];
       for(var i = 0; i < rdDef.pallette.length; i++){
-        colors.addColor(rdDef.pallette, i).listen();
+        gui_col[i] = colors.addColor(rdDef.pallette, i);
       }
+      
+      // gui_col[0].set([1,1,1]);
       colors.add(rdDef, 'color0');
       colors.add(rdDef, 'color1');
       colors.add(rdDef, 'randomColors');
@@ -292,6 +299,7 @@
       settings.open();
       colors.open();
       colors.open();
+      
     }
     
     
@@ -355,6 +363,7 @@
     }
     
     function draw(){
+
       var w = canvas.width;
       var h = canvas.height;
       
