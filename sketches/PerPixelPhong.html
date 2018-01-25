@@ -446,7 +446,7 @@
       }
       
       display(shader){
-        shader.attribute('pos', this.pos);
+        shader.attributeF('pos', this.pos);
         this.idx.bind();
         gl.frontFace(gl.CW);
         gl.disable(gl.CULL_FACE);
