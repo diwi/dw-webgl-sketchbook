@@ -43,7 +43,7 @@ const INFO =
  *
  * <pre>
  *
- *   new Dw.EasyCam(p5.RendererGL, {
+ *   new Dw.EasyCam(app, {
  *     distance : z,                 // scalar
  *     center   : [x, y, z],         // vector
  *     rotation : [q0, q1, q2, q3],  // quaternion
@@ -52,8 +52,8 @@ const INFO =
  *
  * </pre>
  *
- * @param {p5.RendererGL} renderer - p5 WEBGL renderer
- * @param {Object}        args     - {distance, center, rotation, viewport}
+ * @param {Dw.App} app  - parent reference
+ * @param {Object} args - {distance, center, rotation, viewport}
  *
  */
 class EasyCam {
@@ -68,7 +68,6 @@ class EasyCam {
     var canvas = parent.canvas;
     
 
-    
     // define default args
     args = args || {};
     if(args.distance === undefined) args.distance  = 500;
@@ -140,6 +139,37 @@ class EasyCam {
     this.viewport = args.viewport.slice();
     
 
+    // list of easycam-viewports to check.
+    // If one of them is true, the current cam is disabled.
+    this.exclude = {
+      
+      list : [],
+      
+      add : function(item){
+        if(item instanceof EasyCam){
+          this.list.push(item);
+        }
+      },
+      
+      remove : function(item){
+        if(item instanceof EasyCam){
+          var index = this.list.indexOf(item);
+          if(index >= 0){
+            this.list.splice(index, 1);
+          }
+        }
+      },
+      
+      insideViewport : function(x,y){
+        for(var i = 0; i < this.list.length; i++){
+          if(this.list[i].mouse.insideViewport(x, y)){
+            return true;
+          }
+        }
+        return false;
+      },
+      
+    }; 
     
     
     
@@ -176,7 +206,14 @@ class EasyCam {
       insideViewport : function(x, y){
         var x0 = cam.viewport[0], x1 = x0 + cam.viewport[2];
         var y0 = cam.viewport[1], y1 = y0 + cam.viewport[3];
-        return (x > x0) && (x < x1) && (y > y0) && (y < y1);
+        
+        var inside = (x > x0) && (x < x1) && (y > y0) && (y < y1);
+        
+        if(cam.exclude.insideViewport(x, y)){
+          inside = false;
+        }
+
+        return inside;
       },
       
       solveConstraint : function(){
@@ -197,7 +234,7 @@ class EasyCam {
 
       updateInput : function(x,y,z){
         var mouse = cam.mouse;
-
+        
         mouse.prev[0] = mouse.curr[0];
         mouse.prev[1] = mouse.curr[1];
         mouse.prev[2] = mouse.curr[2];
@@ -219,7 +256,7 @@ class EasyCam {
 
       mousedown : function(event){
         var mouse = cam.mouse;
-        
+
         if(event.button === 0) mouse.button |= mouse.BUTTON.LMB;
         if(event.button === 1) mouse.button |= mouse.BUTTON.MMB;
         if(event.button === 2) mouse.button |= mouse.BUTTON.RMB;
@@ -237,6 +274,7 @@ class EasyCam {
       
       mousedrag : function(event){
         var mouse = cam.mouse;
+
         if(mouse.ismousedown){
 
           var x = event.clientX - cam.canvas.clientLeft - cam.canvas.offsetLeft;
@@ -257,7 +295,7 @@ class EasyCam {
       
       mouseup : function(event){
         var mouse = cam.mouse;
-        
+
         var x = event.clientX - cam.canvas.clientLeft - cam.canvas.offsetLeft;
         var y = event.clientY - cam.canvas.clientLeft - cam.canvas.offsetTop;
         
@@ -273,8 +311,8 @@ class EasyCam {
       },
       
       dblclick : function(event){
-          var x = event.clientX;
-          var y = event.clientY;
+        var x = event.clientX;
+        var y = event.clientY;
         if(cam.mouse.insideViewport(x, y)){
           cam.reset();
         }
@@ -332,7 +370,7 @@ class EasyCam {
         mouse.evaluateTouches(event);
         mouse.istouchdown = mouse.insideViewport(mouse.curr[0], mouse.curr[1]);
         mouse.isPressed = (cam.mouse.istouchdown || cam.mouse.ismousedown);
-    
+      
         mouse.dbltap(event);
       },
       
@@ -418,14 +456,14 @@ class EasyCam {
     this.attachMouseListeners();
    
     // P5 registered callbacks, TODO unregister on dispose
-    this.auto_update = true;
-    if(typeof p5 !== 'undefined' && this.parent instanceof p5){
-      this.parent.registerMethod('pre', function(){
-        if(cam.auto_update){
-          cam.update(); 
-        }
-      });
-    } 
+    // this.auto_update = true;
+    // if(typeof p5 !== 'undefined' && this.parent instanceof p5){
+      // this.parent.registerMethod('pre', function(){
+        // if(cam.auto_update){
+          // cam.update(); 
+        // }
+      // });
+    // } 
  
     // damped camera transition
     this.dampedZoom = new DampedAction(function(d){ cam.zoom   (d * cam.getZoomMult    ()); }  );
@@ -1026,7 +1064,6 @@ class EasyCam {
     // 1) disable DEPTH_TEST
     gl.disable(gl.DEPTH_TEST);
     // 2) push modelview/projection
-    //    p5 is not creating a push/pop stack
     if(!this.pushed){
       this.pushed = {};
       this.pushed.m4_modelview  = mat4.create();
@@ -1639,104 +1676,6 @@ return ext;
 
 
 
-
-
-
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-//
-// p5 patches, bug fixes, workarounds, ...
-//
-////////////////////////////////////////////////////////////////////////////////
-
-
-/**
- * @submodule Camera
- * @for p5
- */
-
-
-
-
-if(typeof p5 !== 'undefined'){
-  
-    
-  /**
-   * p5.EasyCam creator function. 
-   * Arguments are optional, and equal to the default EasyCam constructor.
-   * @return {EasyCam} a new EasyCam
-   */
-  p5.prototype.createEasyCam = function(/* p5.RendererGL, {state} */){
-    
-    var renderer = this._renderer;
-    var args     = arguments[0];
-    
-    if(arguments[0] instanceof p5.RendererGL){
-      renderer = arguments[0];
-      args     = arguments[1]; // could still be undefined, which is fine
-    } 
-    
-    return new Dw.EasyCam(renderer, args); 
-  }
-  
-  
-
-  /**
-   * Overriding the current p5.ortho();
-   *
-   * p5 v0.5.16
-   * temporary bugfix for https://github.com/processing/p5.js/pull/2463.
-   *
-   * @param  {Number} left   camera frustum left plane
-   * @param  {Number} right  camera frustum right plane
-   * @param  {Number} bottom camera frustum bottom plane
-   * @param  {Number} top    camera frustum top plane
-   * @param  {Number} near   camera frustum near plane
-   * @param  {Number} far    camera frustum far plane
-   * @return {p5}            the p5 object
-   */
-  p5.prototype.ortho = function(){
-    this._renderer.ortho.apply(this._renderer, arguments);
-    return this;
-  };
-  
-
-  
-  p5.RendererGL.prototype.ortho = function(left, right, bottom, top, near, far) {
-
-    if(left   === undefined) left   = -this.width  / 2;
-    if(right  === undefined) right  = +this.width  / 2;
-    if(bottom === undefined) bottom = -this.height / 2;
-    if(top    === undefined) top    = +this.height / 2;
-    if(near   === undefined) near   =  0;
-    if(far    === undefined) far    =  Math.max(this.width, this.height);
-
-    var w = right - left;
-    var h = top - bottom;
-    var d = far - near;
-
-    var x = +2.0 / w;
-    var y = +2.0 / h;
-    var z = -2.0 / d;
-
-    var tx = -(right + left) / w;
-    var ty = -(top + bottom) / h;
-    var tz = -(far + near) / d;
-
-    this.uPMatrix = p5.Matrix.identity();
-    this.uPMatrix.set(  x,  0,  0,  0,
-                        0, -y,  0,  0,
-                        0,  0,  z,  0,
-                       tx, ty, tz,  1);
-
-    this._curCamera = 'custom';
-    
-  };
-    
-}
 
 
 

@@ -225,15 +225,17 @@ WebGLTexture.prototype.resize = function(w, h, def, gl){
     // TODO, check def diff as well
     def = def || {};
     
-    tex.w         = w;
-    tex.h         = h;
-    tex.target    = tex.target  || def.target  || gl.TEXTURE_2D;
-    tex.iformat   = tex.iformat || def.iformat || gl.RGBA;
-    tex.format    = tex.format  || def.format  || gl.RGBA;
-    tex.type      = tex.type    || def.type    || gl.UNSIGNED_BYTE;
-    tex.wrap      = tex.wrap    || def.wrap    || gl.CLAMP_TO_EDGE;
-    tex.filter    = tex.filter  || def.filter  || [gl.LINEAR, gl.LINEAR];
-    
+    tex.w          = w;
+    tex.h          = h;                               
+    tex.target     = tex.target     || def.target     || gl.TEXTURE_2D;
+    tex.iformat    = tex.iformat    || def.iformat    || gl.RGBA;
+    tex.format     = tex.format     || def.format     || gl.RGBA;
+    tex.type       = tex.type       || def.type       || gl.UNSIGNED_BYTE;
+    tex.wrap       = tex.wrap       || def.wrap       || gl.CLAMP_TO_EDGE;
+    tex.filter     = tex.filter     || def.filter     || [gl.LINEAR, gl.LINEAR];
+    tex.attachment = tex.attachment || def.attachment || gl.COLOR_ATTACHMENT0; // fbo attachment
+   // gl.COLOR_ATTACHMENT0-15, gl.DEPTH_ATTACHMENT, gl.STENCIL_ATTACHMENT, gl.DEPTH_STENCIL_ATTACHMENT
+   
     def.data      = def.data    || null;
  
     gl.bindTexture  (tex.target, tex);
@@ -308,9 +310,22 @@ WebGLFramebuffer.prototype.setTexture = function(tex){
   var tex_old = fbo.tex || [];
   
   var len = Math.max(tex_new.length, tex_old.length);
+  
+  var col_attachment_idx = 0;
   for(var i = 0; i < len; i++){
     var tex = tex_new[i] || tex_old[i];
-    var attachment = gl.COLOR_ATTACHMENT0 + i;
+    var attachment = gl.COLOR_ATTACHMENT0 + col_attachment_idx;
+    
+    // gl.COLOR_ATTACHMENT0-15
+    // gl.DEPTH_ATTACHMENT
+    // gl.STENCIL_ATTACHMENT
+    // gl.DEPTH_STENCIL_ATTACHMENT
+    var attachment = tex.attachment;
+    if(tex.attachment === gl.COLOR_ATTACHMENT0){
+      attachment = gl.COLOR_ATTACHMENT0 + col_attachment_idx;
+      col_attachment_idx++;
+    }
+    
     gl.framebufferTexture2D(gl.FRAMEBUFFER, attachment, tex.target, tex, 0);
   }
   
@@ -320,6 +335,9 @@ WebGLFramebuffer.prototype.setTexture = function(tex){
   
   if(!gl.fbo) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 };
+
+
+
 
 
 WebGLFramebuffer.prototype.setRenderbuffer = function(rbo){
@@ -606,12 +624,32 @@ class Shader {
     this.frag = gl.newFragShader(def.fs);
     this.prog = gl.newProgram();
     
-    
     this.attribute_loc_warning = true;
     this.uniform_loc_warning = true;
     this.attribute_loc_warning_counter = 0;
     this.uniform_loc_warning_counter = 0;
   }
+  
+  pushAttributeLocWarning(state){
+    this.pushed_attribute_loc_warning = this.pushed_attribute_loc_warning || [];
+    this.pushed_attribute_loc_warning.push(this.attribute_loc_warning);
+    this.attribute_loc_warning = state;
+  }
+  
+  popAttributeLocWarning(){
+    this.attribute_loc_warning = this.pushed_attribute_loc_warning.pop();
+  }
+  
+  pushUniformLocWarning(state){
+    this.pushed_uniform_loc_warning = this.pushed_uniform_loc_warning || [];
+    this.pushed_uniform_loc_warning.push(this.uniform_loc_warning);
+    this.uniform_loc_warning = state;
+  }
+  
+  popUniformLocWarning(){
+    this.uniform_loc_warning = this.pushed_uniform_loc_warning.pop();
+  }
+  
   
   release(){
     this.fsq_vbo.release();
