@@ -29,9 +29,7 @@
  */
 </script>
 
-
-  
-<script id="webgl2.vs_showPL" type="x-shader/x-fragment">
+<script id="webgl2.vs_depthmap" type="x-shader/x-fragment">
   #version 300 es
 
   #ifdef GL_ES
@@ -47,10 +45,10 @@
   void main(){
     gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
   }
+    
 </script>
 
-
-<script id="webgl2.fs_showPL" type="x-shader/x-fragment">
+<script id="webgl2.fs_depthmap" type="x-shader/x-fragment">
   #version 300 es
 
   #ifdef GL_ES
@@ -58,15 +56,33 @@
     precision highp int;
   #endif
   
-  uniform vec3 col;
-  out vec4 outfragcol;
-  
   void main(){
-    vec3 fragcol = pow(col * 4.0, vec3(1.0/2.2));
-    outfragcol = vec4(fragcol, 1);
   }
 </script>
 
+
+<script id="webgl2.fs_texdisplay" type="x-shader/x-fragment">
+  #version 300 es
+
+  #ifdef GL_ES
+    precision highp float;
+    precision highp int;
+  #endif
+  
+  uniform vec2 wh_rcp;
+  uniform vec2 xy_off;
+  uniform sampler2D tex;
+  
+  out vec4 fragcol;
+  
+  void main(){
+    vec2 posn = (gl_FragCoord.xy - xy_off) * wh_rcp;
+    float depth = texture(tex, posn).x;
+    depth = depth ;
+    fragcol = vec4(1.0);
+    fragcol.rgb = vec3(1.0 - depth);
+  }
+</script>
 
 
 
@@ -121,12 +137,6 @@
     vec3 col;
   };
   
-  struct PointLight {
-    vec3  pos;
-    vec3  col;
-    float rad;
-  };
-
   struct Material {
     vec3  diff;
     vec3  spec;
@@ -151,9 +161,6 @@
   #define NUM_DIRECTIONALLIGHTS 1
   uniform DirectionalLight directionallights[NUM_DIRECTIONALLIGHTS];
   
-  #define NUM_POINTLIGHTS 1
-  uniform PointLight pointlights[NUM_POINTLIGHTS];
-  
   // materials
   #define NUM_MATERIALS 8
   uniform Material materials[NUM_MATERIALS];
@@ -168,41 +175,7 @@
     // return vnormal;
     // return fnormal;
   }
-  
-  float smootherstepNORM(float x) {
-    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-  }
 
-  float smootherstep(float edge0, float edge1, float x) {
-    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return smootherstepNORM(x);
-  }
-  
-  float attenuation(float radius, float dist){
-#define ATTENUATION 4
-#if (ATTENUATION == 0)
-    radius = 1.0 / radius;
-    float att = 1.0 / (1.0 + radius*dist + radius*radius*dist*dist);
-    return att;
-#elif (ATTENUATION == 1)
-    float att = smootherstep(radius, 0.0, dist); 
-    att *= att;
-    return att;
-#elif (ATTENUATION == 2)
-    float att = clamp(1.0 - dist*dist/(radius*radius), 0.0, 1.0); 
-    att *= att;
-    return att;
-#elif (ATTENUATION == 3)
-    float att = max(1.0 - dist / radius, 0.0);
-    att *= att;
-    return att;
-    // return smootherstep(0.0, 1.0, att);
-#else
-    float att = max(1.0 - dist / radius, 0.0);
-    return smootherstepNORM(att);
-#endif
-  }
-  
   float getKd(vec3 vertNormal, vec3 lightDir){
     return max(dot(-lightDir, vertNormal), 0.0);
   }
@@ -214,68 +187,36 @@
   
   void main(){
     
-    
     material = materials[vmID];
     
     vec3 vertPos = vpos;
     vec3 vertDir = normalize(-vertPos);
     vec3 vertNml = getFragmentNormal(vertPos);
 
-    
     // summed up light contributions
     vec3 fragcol = vec3(0.0);
     
-    float kdView = 1.0;
-    // float kdView = (max(dot(vertNormal, vertDir), 0.0));
-    // kdView = kdView * kdView;
-    // kdView = kdView * kdView;
-    // kdView = 1.0 - kdView;
-    // float kdView = 1.0;
-    
-    // if(kdView > 0.0)
+    // ambientlight
     {
-      // ambientlight
-      {
-        fragcol += material.diff * ambientlight.col;
-      }
-      
-      // directionallights
-      for(int i = 0; i < NUM_DIRECTIONALLIGHTS; i++) {
-        
-        DirectionalLight light = directionallights[i];
-      
-        // light direction
-        vec3 lightDir = normalize(light.dir);
-   
-        // diffuse, specular
-        float kd = getKd(vertNml, lightDir);
-        float ks = getKs(vertNml, lightDir, vertDir) * kdView * kd;
-        
-        fragcol += material.diff * light.col * kd;
-        fragcol += material.spec * light.col * ks;
-      }
-      
-      // pointlights
-      for(int i = 0; i < NUM_POINTLIGHTS; i++) {
-    
-        PointLight light = pointlights[i];
-        
-        // light direction
-        vec3 lightDir = normalize(vertPos - light.pos);
-        
-        // attenuation/falloff
-        float lightDist = distance(light.pos, vertPos);
-        float att = attenuation(light.rad, lightDist);
-    
-        // diffuse specular
-        float kd = getKd(vertNml, lightDir         );
-        float ks = getKs(vertNml, lightDir, vertDir) * kdView * kd;
-        
-        fragcol += material.diff * light.col * kd * att;
-        fragcol += material.spec * light.col * ks * att;
-      }
+      fragcol += material.diff * ambientlight.col;
     }
     
+    // directionallights
+    for(int i = 0; i < NUM_DIRECTIONALLIGHTS; i++) {
+      
+      DirectionalLight light = directionallights[i];
+    
+      // light direction
+      vec3 lightDir = normalize(light.dir);
+   
+      // diffuse, specular
+      float kd = getKd(vertNml, lightDir);
+      float ks = getKs(vertNml, lightDir, vertDir) * kd;
+      
+      fragcol += material.diff * light.col * kd;
+      fragcol += material.spec * light.col * ks;
+    }
+      
     // [0,1]
     fragcol = clamp(fragcol, 0.0, 1.0);
     
@@ -310,17 +251,21 @@
     var gl;
     
     var shader;
-    var shaderPL;
-    
+    var shader_texdisplay;
+
+    var depthmap;
+
     var groundplane;
-    var pl_sphere;
+
     var models = [];
     
     var m4_modelview  = newMat(mat4);
     var m4_projection = newMat(mat4);
     var m3_normals    = newMat(mat3);
-       
+   
+    
     var orbit;
+    var orbit_light;
     
     function init(){
       console.log(this);
@@ -355,20 +300,33 @@
       
       canvas = this.canvas;
       gl = this.gl;
-     
+      
+      var w = canvas.width;
+      var h = canvas.height;
+      
+
       // orbit = new Dw.OrbitControl(this);
       orbit = new Dw.EasyCam(this, {distance: 3000});
+      
+            
+      orbit_light = new Dw.EasyCam(this, {distance: 3000});
+      orbit_light.setViewport([10,h-300-10, 300, 300]);
+      
+      orbit.exclude.add(orbit_light);
+
+      
       
       // create Shader
       var vs, fs;
       vs = document.getElementById("webgl2.vs_draw").textContent;
       fs = document.getElementById("webgl2.fs_draw").textContent;
       shader = new Dw.Shader(gl, {vs:vs, fs:fs});
+     
       
-      vs = document.getElementById("webgl2.vs_showPL").textContent;
-      fs = document.getElementById("webgl2.fs_showPL").textContent;
-      shaderPL = new Dw.Shader(gl, {vs:vs, fs:fs});
- 
+      fs = document.getElementById("webgl2.fs_texdisplay").textContent;
+      shader_texdisplay = new Dw.Shader(gl, {fs:fs});
+      
+      
       var icos     = Dw.createIcosahedron(300, 1);
       var cube     = Dw.createCube(300, 1);
       var sphere   = Dw.createSphere(300, 8, 4);
@@ -378,9 +336,7 @@
       var circle   = Dw.createCircle(300, 16, !true);  
       var tube     = Dw.createTube(300, 0, 300, 12, 1);  
       var cylinder = Dw.createCylinder(300, 300, 300, 64, 1);
-      
-      pl_sphere    = new PointLightModel(Dw.createIcosahedron(10, 1)); 
-  
+        
       groundplane = new Model(Dw.createPlane(3000), 0); 
       
       var i = 0;
@@ -393,7 +349,10 @@
       models[i++] = new Model(circle  , 5);
       models[i++] = new Model(tube    , 6);
       models[i++] = new Model(cylinder, 7);
-
+      
+      depthmap = new DepthMap();
+      depthmap.setOrtho(3000,-3000,6000);
+      // depthmap.setPerspective(60 * Dw.TO_RAD, 100, 4000);
       initGUI();
     }
     
@@ -438,31 +397,7 @@
 
     };
     
-    
-    class PointLightModel {
-      constructor(ifs, materialID){
-        this.ifs = ifs;
-        this.pos = gl.newBuffer(ifs.verts, 3, gl.FLOAT);
-        this.idx = gl.newBuffer(ifs.triangles, 1, gl.UNSIGNED_INT, gl.ELEMENT_ARRAY_BUFFER);
-      }
-      
-      display(shader){
-        shader.attributeF('pos', this.pos);
-        this.idx.bind();
-        gl.frontFace(gl.CW);
-        gl.disable(gl.CULL_FACE);
-        gl.drawElements(gl.TRIANGLES, this.idx.vtxCount, this.idx.type, 0);
-      }
-      
-      release(){
-        this.pos.release();
-        this.idx.release();
-      }
-      
-    };
-    
 
-    
     var resize = function(w, h){
     }
     
@@ -481,17 +416,6 @@
       }
       dDL[0].open();
       
-      var cPL = aGui.addFolder('Point Lights');
-      var dPL = [];
-      for(var i = 0; i < pointlights.length; i++){
-        dPL[i] = cPL.addFolder('PL '+i);
-        dPL[i].addColor(pointlights[i], 'col');
-        dPL[i].add     (pointlights[i], 'rad', 100, 7000);
-        dPL[i].open();
-      }
-      cPL.open();
-
-      
       var bMaterials = aGui.addFolder('Materials');
       bMaterials.open();
       var cMat = [];
@@ -506,8 +430,6 @@
     }
     
     
-    
-    
     var materials = [
       { diff:[255,220,220], spec:[255,220,220], spec_exp:50 , normalsmooth: 0.80 },
       { diff:[ 32, 32, 32], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },
@@ -519,20 +441,11 @@
       { diff:[ 16,  8,  4], spec:[255,128,128], spec_exp:16 , normalsmooth: 1.00 },  
     ];
     
-    var ambientlight = { col : [1,1,2] };
+    var ambientlight = { col : [2,1,2] };
 
     var directionallights = [
-      { dir:[-1,-2,-5], dir_cam:[0,0,0], col:[2,2,6] },
+      { dir:[-1,-1,-1], dir_cam:[0,0,0], col:[255,255,255] },
     ];
-
-    var pointlights = [
-      { pos:[0,0,0], pos_cam:[0,0,0], col:[128,  32,   0], rad:3500 },
-      { pos:[0,0,0], pos_cam:[0,0,0], col:[  0,  32, 128], rad:3500 },
-      { pos:[0,0,0], pos_cam:[0,0,0], col:[128, 128, 128], rad:3500 },
-      { pos:[0,0,0], pos_cam:[0,0,0], col:[255, 220, 220], rad:3500 },
-      { pos:[0,0,0], pos_cam:[0,0,0], col:[255, 160,  32], rad:3500 },
-    ];
-    
 
     
     function normCol(col){
@@ -562,37 +475,144 @@
       shader.uniformF('directionallights['+idx+'].dir', light.dir_cam);
       shader.uniformF('directionallights['+idx+'].col', normCol(light.col));
     }
+    
+    
+    
+    class DepthMap{
+      
+      constructor(){
+        var vs = document.getElementById("webgl2.vs_depthmap").textContent;
+        var fs = document.getElementById("webgl2.fs_depthmap").textContent;
+        this.shader = new Dw.Shader(gl, {vs:vs, fs:fs});
+        
+        var dim = 1024;
+        var def = {
+          target     : gl.TEXTURE_2D,
+          iformat    : gl.DEPTH_COMPONENT16,
+          format     : gl.DEPTH_COMPONENT,
+          attachment : gl.DEPTH_ATTACHMENT,
+          type       : gl.UNSIGNED_SHORT,
+          wrap       : gl.CLAMP_TO_EDGE,
+          filter     : [gl.NEAREST, gl.NEAREST],
+        };
 
-    function setPointLight(shader, idx){
+        this.tex = gl.newTexture(dim, dim, def);
+        
+        this.fbo = gl.newFramebuffer();
+        this.fbo.setTexture(this.tex);
+        this.fbo.err();
+        
+        this.fbo.begin();
+        this.fbo.end();
+        
+        this.mat = {
+          modelview  : newMat(mat4),
+          projection : newMat(mat4),
+        };
+      }
       
-      var light = pointlights[idx];
-      light.m4_modelview = mat4.clone(m4_modelview);
-      // transform to camera-space 
-      vec3.transformMat4(light.pos_cam, light.pos, m4_modelview);
+      resize(w, h){
+        this.tex.resize(w, h);
+      }
       
-      // set shader uniforms
-      shader.uniformF('pointlights['+idx+'].pos', light.pos_cam);
-      shader.uniformF('pointlights['+idx+'].col', normCol(light.col));
-      shader.uniformF('pointlights['+idx+'].rad', light.rad);
+      setModelview(dir, distance){
+        var x = dir[0];
+        var y = dir[1];
+        var z = dir[2];
+        var dd = x*x+y*y+z*z;
+        if(dd > 0.0 && dd !== 1.0){
+          dd = distance / Math.sqrt(dd);
+          x *= dd;
+          y *= dd;
+          z *= dd;
+        }
+  
+        this.eye    = [-x,-y,-z];
+        this.center = [0,0,0];
+        this.up     = [0,0,-1];
+        mat4.lookAt(this.mat.modelview,this. eye, this.center, this.up);
+      }
+      
+      setOrtho(w, h, d){
+        mat4.ortho(this.mat.projection, -w/2, w/2, -h/2, h/2, 0, d);
+      }
+      
+      setPerspective(fovy, near, far){
+        mat4.perspective(this.mat.projection, fovy, this.tex.w/this.tex.h, near, far);
+        mat4.scale(this.mat.projection, this.mat.projection, [1,-1,1]);
+      }
+      
+      create(render_cb){
+        var w = this.tex.w;
+        var h = this.tex.h;
+        
+        this.fbo.begin();
+        
+        gl.viewport(0, 0, w, h);
+        gl.colorMask(false, false, false, false);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST);
+        // gl.clearDepth(1.0);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+       
+        this.shader.begin();
+        this.shader.pushAttributeLocWarning(false);
+        this.shader.pushUniformLocWarning(false);
+        render_cb(this.shader, this.mat);
+        this.shader.popAttributeLocWarning();
+        this.shader.popUniformLocWarning();
+        this.shader.end();
+        this.fbo.end();
+      }
+    
     }
 
-    
     
     function draw(){
       var w = canvas.width;
       var h = canvas.height;
       
+
+      
+      
       // projection
-      mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 1, 60000);
+      mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 100, 6000);
       mat4.scale(m4_projection, m4_projection, [1,-1,1]);
     
       // camera
       mat4.identity(m4_modelview);
       
-      // apply cam
+
       orbit.update().apply(m4_modelview);
       
       mat3.normalFromMat4(m3_normals, m4_modelview);
+      
+      
+      // mat4.copy(depthmap.mat.modelview, m4_modelview);
+      // mat4.copy(depthmap.mat.projection, m4_projection);
+      
+      // console.log(depthmap.mat.modelview, m4_modelview)
+      
+      orbit_light.update().apply(depthmap.mat.modelview);
+
+      depthmap.create(displayScene);
+      
+      var camEYE = orbit_light.getPosition(this.camEYE);   
+      var camLAT = orbit_light.getCenter  (this.camLAT);
+      var camRUP = orbit_light.getUpVector(this.camRUP);
+      
+            
+      directionallights[0].dir[0] =  camLAT[0] - camEYE[0];
+      directionallights[0].dir[1] =  camLAT[1] - camEYE[1];
+      directionallights[0].dir[2] =  camLAT[2] - camEYE[2];
+      
+      
+      
+      // directionallights[0].dir[0] = depthmap.mat.modelview[8];
+      // directionallights[0].dir[1] = depthmap.mat.modelview[9];
+      // directionallights[0].dir[2] = -depthmap.mat.modelview[10];
+      
 
       
       var gray = 16.0 / 255.0;
@@ -605,7 +625,6 @@
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
       
       shader.frag.setDefine('NUM_DIRECTIONALLIGHTS', directionallights.length);
-      shader.frag.setDefine('NUM_POINTLIGHTS'      , pointlights.length);
       shader.frag.setDefine('NUM_MATERIALS'        , materials.length);
 
       shader.begin();
@@ -618,53 +637,59 @@
       // ambient light
       setAmbientlight(shader, ambientlight);
       
-      // directional lights
-      // TODO: apply transforms, see pointlights
       setDirectionalLight(shader, 0);
       
-      // point lights
-      m4_modelview.push();
-        var angle = app.framecount * 0.01;
-        // var angle = Dw.map(app.mouse.x, 0, w, 0, 2* Dw.PI2);
-        mat4.rotateZ(m4_modelview, m4_modelview, angle);
-
-        m4_modelview.push();
-        
-          m4_modelview.translate(100, 500, 1000);
-          setPointLight(shader, 0);
-        m4_modelview.pop();
-        
-        m4_modelview.push();
-          m4_modelview.translate(-2000, 0, 50);
-          setPointLight(shader, 1);
-        m4_modelview.pop();
-        
-        m4_modelview.push();
-          m4_modelview.translate(+500, 0, 500);
-          setPointLight(shader, 2);
-        m4_modelview.pop();
-        
-        m4_modelview.push();
-          m4_modelview.translate(+1200, 1500, 200);
-          setPointLight(shader, 3);
-        m4_modelview.pop();
-        
-        m4_modelview.push();
-          m4_modelview.translate(-1500, -1500, 1500);
-          setPointLight(shader, 4);
-        m4_modelview.pop();
-        
-      m4_modelview.pop();
-     
+      var mat = {
+        projection : m4_projection,
+        modelview : m4_modelview,
+        normals : m3_normals,
+      }
       
+      displayScene(shader, mat);
+      
+      shader.end();
+      
+      displayDepthmap();
+
+      HUD();
+    }
+    
+    
+    function displayDepthmap(){
+      
+      var w_canvas = app.canvas.width;
+      var h_canvas = app.canvas.height;
+      
+      var viewport = orbit_light.getViewport();
+      
+      var w = viewport[2];
+      var h = viewport[3];
+      var x = viewport[0];
+      var y = viewport[1]; y = h_canvas - 1 - y - h;
+
+      shader_texdisplay.begin();
+      gl.viewport(x, y, w, h);
+      gl.colorMask(true, true, true, true);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.DEPTH_TEST);
+      shader_texdisplay.uniformF('xy_off', [x, y]);
+      shader_texdisplay.uniformF('wh_rcp', [1/w, 1/h]);
+      shader_texdisplay.uniformT('tex', depthmap.tex);
+      shader_texdisplay.quad();
+      shader_texdisplay.end();
+    }
+    
+    
+    function displayScene(shader, mat){
       // groundplane
-      m4_modelview.push();
-      m4_modelview.translate(0, 0, 0);
-      shader.uniformM('m4_projection', m4_projection);
-      shader.uniformM('m4_modelview', m4_modelview);
-      shader.uniformM('m3_normals', m3_normals);
+      mat.modelview.push();
+      mat.modelview.translate(0, 0, 0);
+      shader.uniformM('m4_projection', mat.projection);
+      shader.uniformM('m4_modelview' , mat.modelview );
+      shader.uniformM('m3_normals', mat.normals   );
+
       groundplane.display(shader);
-      m4_modelview.pop();
+      mat.modelview.pop();
       
       // evenly space primitives
       var spacing = 900;
@@ -673,52 +698,37 @@
       var dimx = spacing * (nx-1);
       var dimy = spacing * (ny-1);
       
-      m4_modelview.push();
-      m4_modelview.translate(-dimx/2, -dimy/2, 400);
+      mat.modelview.push();
+      mat.modelview.translate(-dimx/2, -dimy/2, 400);
 
       for(var iy = 0; iy < ny; iy++){
        
-        m4_modelview.push();
+        mat.modelview.push();
         for(var ix = 0; ix < nx; ix++){
           
           var idx = iy * nx + ix;
           if(idx < models.length){
-            shader.uniformM('m4_projection', m4_projection);
-            shader.uniformM('m4_modelview', m4_modelview);
-            shader.uniformM('m3_normals', m3_normals);
+            shader.uniformM('m4_projection', mat.projection);
+            shader.uniformM('m4_modelview' , mat.modelview );
+            shader.uniformM('m3_normals', mat.normals   );
             models[idx].display(shader);
           }
-          m4_modelview.translate(spacing, 0, 0);
+          mat.modelview.translate(spacing, 0, 0);
         }
-        m4_modelview.pop();
-        m4_modelview.translate(0, spacing, 0);
+        mat.modelview.pop();
+        mat.modelview.translate(0, spacing, 0);
       }
-      m4_modelview.pop();
+      mat.modelview.pop();
 
-      shader.end();
-      
-      
-      
-      // display pointlights as flat-shaded spheres
-      shaderPL.begin();
-      for(var i = 0; i < pointlights.length; i++){
-        var light = pointlights[i];
-        shaderPL.uniformM('m4_projection', m4_projection);
-        shaderPL.uniformM('m4_modelview', light.m4_modelview);
-        shaderPL.uniformF('col', normCol(light.col))
-        pl_sphere.display(shaderPL);
-      }
-      shaderPL.end();
-      
-      
-      HUD();
     }
     
+    
+    
+    
+
     var release = function(){
-      shaderPL.release();
       shader.release();
       groundplane.release();
-      pl_sphere.release();
       for(var i = 0; i < models.length; i++){
         models[i].release();
       }
@@ -733,9 +743,11 @@
       stats += ' - fps: '+fps.toFixed(2);
       document.getElementById('sketch-stats').textContent = stats;
     }
+    
+    
 
 
-    Dw.start('Per Pixel Phong Shading');
+    Dw.start('ShadowMapping');
 
   </script>
   
