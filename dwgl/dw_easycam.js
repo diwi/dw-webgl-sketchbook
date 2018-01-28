@@ -557,8 +557,8 @@ class EasyCam {
   }
   
   /** Disposes/releases the camera. */
-  dispose(){
-    removeMouseListeners();
+  release(){
+    this.removeMouseListeners();
   }
   
   /** @return {boolean} the current autoUpdate state */

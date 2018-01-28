@@ -225,15 +225,16 @@ WebGLTexture.prototype.resize = function(w, h, def, gl){
     // TODO, check def diff as well
     def = def || {};
     
-    tex.w          = w;
-    tex.h          = h;                               
-    tex.target     = tex.target     || def.target     || gl.TEXTURE_2D;
-    tex.iformat    = tex.iformat    || def.iformat    || gl.RGBA;
-    tex.format     = tex.format     || def.format     || gl.RGBA;
-    tex.type       = tex.type       || def.type       || gl.UNSIGNED_BYTE;
-    tex.wrap       = tex.wrap       || def.wrap       || gl.CLAMP_TO_EDGE;
-    tex.filter     = tex.filter     || def.filter     || [gl.LINEAR, gl.LINEAR];
-    tex.attachment = tex.attachment || def.attachment || gl.COLOR_ATTACHMENT0; // fbo attachment
+    tex.w           = w;
+    tex.h           = h;                               
+    tex.target      = tex.target      || def.target      || gl.TEXTURE_2D;
+    tex.iformat     = tex.iformat     || def.iformat     || gl.RGBA;
+    tex.format      = tex.format      || def.format      || gl.RGBA;
+    tex.type        = tex.type        || def.type        || gl.UNSIGNED_BYTE;
+    tex.wrap        = tex.wrap        || def.wrap        || gl.CLAMP_TO_EDGE;
+    tex.filter      = tex.filter      || def.filter      || [gl.LINEAR, gl.LINEAR];
+    tex.comparemode = tex.comparemode || def.comparemode || gl.NONE;
+    tex.attachment  = tex.attachment  || def.attachment  || gl.COLOR_ATTACHMENT0; // fbo attachment
    // gl.COLOR_ATTACHMENT0-15, gl.DEPTH_ATTACHMENT, gl.STENCIL_ATTACHMENT, gl.DEPTH_STENCIL_ATTACHMENT
    
     def.data      = def.data    || null;
@@ -243,6 +244,7 @@ WebGLTexture.prototype.resize = function(w, h, def, gl){
     gl.texParameteri(tex.target, gl.TEXTURE_WRAP_T, tex.wrap);
     gl.texParameteri(tex.target, gl.TEXTURE_MIN_FILTER, tex.filter[0]);
     gl.texParameterf(tex.target, gl.TEXTURE_MAG_FILTER, tex.filter[1]);
+    gl.texParameterf(tex.target, gl.TEXTURE_COMPARE_MODE, tex.comparemode);
     gl.texImage2D   (tex.target, 0, tex.iformat, tex.w, tex.h, 0, tex.format, tex.type, def.data);
     gl.bindTexture  (tex.target, null);
     

@@ -188,6 +188,28 @@ class IFS {
     return this;
   }
   
+  createAABB(){
+    var MX = +Number.MAX_VALUE;
+    var MN = -Number.MAX_VALUE;
+
+    var aabb = new Float32Array([MX,MX,MX, MN,MN,MN]); // xyz-min, xyz-max
+    for(var i = 0; i < this.verts_num; i++){
+      var ii = i * 3;
+      var x = this.verts[ii++];
+      var y = this.verts[ii++];
+      var z = this.verts[ii++];
+      aabb[0] = Math.min(aabb[0], x);
+      aabb[1] = Math.min(aabb[1], y); 
+      aabb[2] = Math.min(aabb[2], z); 
+      aabb[3] = Math.max(aabb[3], x); 
+      aabb[4] = Math.max(aabb[4], y); 
+      aabb[5] = Math.max(aabb[5], z); 
+    }
+    this.aabb = aabb;
+  }
+  
+  
+  
   clear(buffer){
     for(var i = 0; i < buffer.length; i++){
       buffer[i] = 0.0;

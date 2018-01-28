@@ -14,6 +14,9 @@
   <script src="../dwgl/dw_easycam.js"></script>
   <script src="../dwgl/dw_geometry.js"></script>
   
+  
+  <script src="depthmap.js"></script>
+  
   <link rel="stylesheet" href="../css/style.css">
 
 
@@ -39,11 +42,12 @@
   
   in vec3 pos;
 
+  uniform mat4 m4_modelworld;
   uniform mat4 m4_projection;
   uniform mat4 m4_modelview;
 
   void main(){
-    gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
+    gl_Position = m4_projection * m4_modelview * m4_modelworld * vec4(pos, 1.0);
   }
     
 </script>
@@ -105,13 +109,19 @@
   out vec3 vnml;
   flat out int vmID;
   
+  uniform mat4 m4_modelworld;
   uniform mat4 m4_projection;
   uniform mat4 m4_modelview;
   uniform mat3 m3_normals;
 
   void main(){
-    gl_Position = m4_projection * m4_modelview * vec4(pos, 1.0);
-    vpos = (m4_modelview * vec4(pos, 1.0)).xyz;
+    vec4 pos_world = m4_modelworld * vec4(pos, 1.0);
+    vec4 pos_view  = m4_modelview * pos_world;
+    vec4 pos_ndc   = m4_projection * pos_view;
+    
+    gl_Position = pos_ndc;
+    
+    vpos = pos_view.xyz;
     vcol = col;
     vnml = nml;
     vmID = mID;
@@ -126,6 +136,7 @@
   #ifdef GL_ES
     precision highp float;
     precision highp int;
+    precision highp sampler2DShadow;
   #endif
   
   struct Ambientlight{
@@ -151,9 +162,21 @@
     
   out vec4 outfragcol;
   
+  uniform mat4 m4_modelworld;
   uniform mat4 m4_projection;
   uniform mat4 m4_modelview;
   uniform mat3 m3_normals;
+  
+  struct Depthmap {
+    vec2 wh;
+    float bias;
+    // sampler2D tex;
+    sampler2DShadow tex;
+    mat4 m4_modelview;
+    mat4 m4_projection;
+  };
+  
+  uniform Depthmap depthmap;
   
   // lights
   uniform Ambientlight ambientlight;
@@ -175,6 +198,27 @@
     // return vnormal;
     // return fnormal;
   }
+  
+  float getKShadow(Depthmap depthmap, vec3 vertPos, vec3 vertNormal){
+    
+    vec4 pos = vec4(vertPos + vertNormal * depthmap.bias, 1.0);
+    vec4 vpos_depthmap = depthmap.m4_projection * depthmap.m4_modelview * inverse(m4_modelview) * pos;
+    vpos_depthmap.xyz = (vpos_depthmap.xyz / vpos_depthmap.w) * 0.5 + 0.5;
+    
+    return texture(depthmap.tex, vpos_depthmap.xyz);
+
+    // float depth = texture(depthmap.tex, vpos_depthmap.xy).x; 
+    // if(depth < vpos_depthmap.z){
+      // return 0.0;
+    // } else {
+      // return 1.0;
+    // }
+
+  }
+  
+
+  
+  
 
   float getKd(vec3 vertNormal, vec3 lightDir){
     return max(dot(-lightDir, vertNormal), 0.0);
@@ -196,6 +240,8 @@
     // summed up light contributions
     vec3 fragcol = vec3(0.0);
     
+    float kShadow = getKShadow(depthmap, vertPos, vertNml) * 0.98 + 0.02;
+    
     // ambientlight
     {
       fragcol += material.diff * ambientlight.col;
@@ -213,8 +259,8 @@
       float kd = getKd(vertNml, lightDir);
       float ks = getKs(vertNml, lightDir, vertDir) * kd;
       
-      fragcol += material.diff * light.col * kd;
-      fragcol += material.spec * light.col * ks;
+      fragcol += material.diff * light.col * kd * kShadow;
+      fragcol += material.spec * light.col * ks * kShadow;
     }
       
     // [0,1]
@@ -250,23 +296,20 @@
     var canvas;
     var gl;
     
-    var shader;
-    var shader_texdisplay;
+    var shaderRender;
 
     var depthmap;
 
     var groundplane;
 
     var models = [];
-    
+    var m4_modelworld = newMat(mat4);
     var m4_modelview  = newMat(mat4);
     var m4_projection = newMat(mat4);
     var m3_normals    = newMat(mat3);
    
-    
     var orbit;
-    var orbit_light;
-    
+
     function init(){
       console.log(this);
       console.log(Dw);
@@ -292,6 +335,10 @@
         }
       }
       
+      mat.scale = function(x,y,z){
+        matX.scale(this, this, [x,y,z]);
+      }
+      
       return mat;
     }
     
@@ -304,38 +351,24 @@
       var w = canvas.width;
       var h = canvas.height;
       
-
-      // orbit = new Dw.OrbitControl(this);
       orbit = new Dw.EasyCam(this, {distance: 3000});
-      
-            
-      orbit_light = new Dw.EasyCam(this, {distance: 3000});
-      orbit_light.setViewport([10,h-300-10, 300, 300]);
-      
-      orbit.exclude.add(orbit_light);
 
-      
-      
       // create Shader
       var vs, fs;
       vs = document.getElementById("webgl2.vs_draw").textContent;
       fs = document.getElementById("webgl2.fs_draw").textContent;
-      shader = new Dw.Shader(gl, {vs:vs, fs:fs});
-     
+      shaderRender = new Dw.Shader(gl, {vs:vs, fs:fs});
+
       
-      fs = document.getElementById("webgl2.fs_texdisplay").textContent;
-      shader_texdisplay = new Dw.Shader(gl, {fs:fs});
-      
-      
-      var icos     = Dw.createIcosahedron(300, 1);
-      var cube     = Dw.createCube(300, 1);
-      var sphere   = Dw.createSphere(300, 8, 4);
+      var icos     = Dw.createIcosahedron(500, 3);
+      var cube     = Dw.createCube(400, 3);
+      var sphere   = Dw.createSphere(300, 48, 24);
       var plane    = Dw.createPlane(300);
-      var torus    = Dw.createTorus(300);  
-      var box      = Dw.createBox(300, 300, 300, 1, 1, 30);  
+      var torus    = Dw.createTorus(500, 220, 48,24);  
+      var box      = Dw.createBox(400, 600, 400, 1, 1, 30);  
       var circle   = Dw.createCircle(300, 16, !true);  
-      var tube     = Dw.createTube(300, 0, 300, 12, 1);  
-      var cylinder = Dw.createCylinder(300, 300, 300, 64, 1);
+      var tube     = Dw.createTube(200, 500, 500, 8, 1);  
+      var cylinder = Dw.createCylinder(300, 300, 900, 64, 1);
         
       groundplane = new Model(Dw.createPlane(3000), 0); 
       
@@ -349,20 +382,27 @@
       models[i++] = new Model(circle  , 5);
       models[i++] = new Model(tube    , 6);
       models[i++] = new Model(cylinder, 7);
+      depthmap = new DepthMap(this);
+  
+      depthmap.orbit.setViewport([10,h-300-10, 300, 300]);
+      orbit.exclude.add(depthmap.orbit);
       
-      depthmap = new DepthMap();
-      depthmap.setOrtho(3000,-3000,6000);
-      // depthmap.setPerspective(60 * Dw.TO_RAD, 100, 4000);
+      depthmap.setOrtho(8000,-8000,20000);
+      // depthmap.setPerspective(90 * Dw.TO_RAD, 100, 20000);
       initGUI();
     }
     
     
+
    
     class Model {
       
       constructor(ifs, materialID){
         this.ifs = ifs;
         
+        // axis aligned bounding box
+        this.ifs.createAABB();
+  
         materialID = materialID || 0;
         ifs.mID = new Int32Array(ifs.verts_num);
         for(var i = 0; i < ifs.verts_num; i++){
@@ -431,14 +471,14 @@
     
     
     var materials = [
-      { diff:[255,220,220], spec:[255,220,220], spec_exp:50 , normalsmooth: 0.80 },
-      { diff:[ 32, 32, 32], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },
       { diff:[255,255,255], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },
-      { diff:[255, 16,  4], spec:[255,220,192], spec_exp:50 , normalsmooth: 1.00 },  
-      { diff:[255,255,255], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },  
-      { diff:[  8,  16, 4], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },  
-      { diff:[  4,  8, 16], spec:[128,128,255], spec_exp:16 , normalsmooth: 0.00 },  
-      { diff:[ 16,  8,  4], spec:[255,128,128], spec_exp:16 , normalsmooth: 1.00 },  
+      { diff:[ 64, 64, 64], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },
+      { diff:[255,220,  0], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },
+      { diff:[255, 32,  4], spec:[255,220,192], spec_exp:50 , normalsmooth: 1.00 },  
+      { diff:[  4,160,255], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },  
+      { diff:[128,255,  4], spec:[255,255,255], spec_exp:50 , normalsmooth: 0.80 },  
+      { diff:[  4, 96,255], spec:[128,128,255], spec_exp:16 , normalsmooth: 0.00 },  
+      { diff:[255, 96,  4], spec:[255,128,128], spec_exp:16 , normalsmooth: 1.00 },  
     ];
     
     var ambientlight = { col : [2,1,2] };
@@ -478,95 +518,7 @@
     
     
     
-    class DepthMap{
-      
-      constructor(){
-        var vs = document.getElementById("webgl2.vs_depthmap").textContent;
-        var fs = document.getElementById("webgl2.fs_depthmap").textContent;
-        this.shader = new Dw.Shader(gl, {vs:vs, fs:fs});
-        
-        var dim = 1024;
-        var def = {
-          target     : gl.TEXTURE_2D,
-          iformat    : gl.DEPTH_COMPONENT16,
-          format     : gl.DEPTH_COMPONENT,
-          attachment : gl.DEPTH_ATTACHMENT,
-          type       : gl.UNSIGNED_SHORT,
-          wrap       : gl.CLAMP_TO_EDGE,
-          filter     : [gl.NEAREST, gl.NEAREST],
-        };
-
-        this.tex = gl.newTexture(dim, dim, def);
-        
-        this.fbo = gl.newFramebuffer();
-        this.fbo.setTexture(this.tex);
-        this.fbo.err();
-        
-        this.fbo.begin();
-        this.fbo.end();
-        
-        this.mat = {
-          modelview  : newMat(mat4),
-          projection : newMat(mat4),
-        };
-      }
-      
-      resize(w, h){
-        this.tex.resize(w, h);
-      }
-      
-      setModelview(dir, distance){
-        var x = dir[0];
-        var y = dir[1];
-        var z = dir[2];
-        var dd = x*x+y*y+z*z;
-        if(dd > 0.0 && dd !== 1.0){
-          dd = distance / Math.sqrt(dd);
-          x *= dd;
-          y *= dd;
-          z *= dd;
-        }
-  
-        this.eye    = [-x,-y,-z];
-        this.center = [0,0,0];
-        this.up     = [0,0,-1];
-        mat4.lookAt(this.mat.modelview,this. eye, this.center, this.up);
-      }
-      
-      setOrtho(w, h, d){
-        mat4.ortho(this.mat.projection, -w/2, w/2, -h/2, h/2, 0, d);
-      }
-      
-      setPerspective(fovy, near, far){
-        mat4.perspective(this.mat.projection, fovy, this.tex.w/this.tex.h, near, far);
-        mat4.scale(this.mat.projection, this.mat.projection, [1,-1,1]);
-      }
-      
-      create(render_cb){
-        var w = this.tex.w;
-        var h = this.tex.h;
-        
-        this.fbo.begin();
-        
-        gl.viewport(0, 0, w, h);
-        gl.colorMask(false, false, false, false);
-        gl.depthMask(true);
-        gl.disable(gl.BLEND);
-        gl.enable(gl.DEPTH_TEST);
-        // gl.clearDepth(1.0);
-        gl.clear(gl.DEPTH_BUFFER_BIT);
-       
-        this.shader.begin();
-        this.shader.pushAttributeLocWarning(false);
-        this.shader.pushUniformLocWarning(false);
-        render_cb(this.shader, this.mat);
-        this.shader.popAttributeLocWarning();
-        this.shader.popUniformLocWarning();
-        this.shader.end();
-        this.fbo.end();
-      }
-    
-    }
+ 
 
     
     function draw(){
@@ -574,47 +526,27 @@
       var h = canvas.height;
       
 
+      depthmap.create(displayScene);
+      
+      
+      directionallights[0].dir[0] = depthmap.viewdir[0];
+      directionallights[0].dir[1] = depthmap.viewdir[1];
+      directionallights[0].dir[2] = depthmap.viewdir[2];
       
       
       // projection
-      mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 100, 6000);
+      mat4.perspective(m4_projection, 60 * Dw.TO_RAD, w/h, 100, 20000);
       mat4.scale(m4_projection, m4_projection, [1,-1,1]);
     
       // camera
       mat4.identity(m4_modelview);
-      
-
       orbit.update().apply(m4_modelview);
       
+      
+
       mat3.normalFromMat4(m3_normals, m4_modelview);
       
-      
-      // mat4.copy(depthmap.mat.modelview, m4_modelview);
-      // mat4.copy(depthmap.mat.projection, m4_projection);
-      
-      // console.log(depthmap.mat.modelview, m4_modelview)
-      
-      orbit_light.update().apply(depthmap.mat.modelview);
 
-      depthmap.create(displayScene);
-      
-      var camEYE = orbit_light.getPosition(this.camEYE);   
-      var camLAT = orbit_light.getCenter  (this.camLAT);
-      var camRUP = orbit_light.getUpVector(this.camRUP);
-      
-            
-      directionallights[0].dir[0] =  camLAT[0] - camEYE[0];
-      directionallights[0].dir[1] =  camLAT[1] - camEYE[1];
-      directionallights[0].dir[2] =  camLAT[2] - camEYE[2];
-      
-      
-      
-      // directionallights[0].dir[0] = depthmap.mat.modelview[8];
-      // directionallights[0].dir[1] = depthmap.mat.modelview[9];
-      // directionallights[0].dir[2] = -depthmap.mat.modelview[10];
-      
-
-      
       var gray = 16.0 / 255.0;
       gl.viewport(0, 0, w, h);
       gl.colorMask(true, true, true, true);
@@ -624,114 +556,113 @@
       gl.clearColor(gray, gray, gray, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
       
-      shader.frag.setDefine('NUM_DIRECTIONALLIGHTS', directionallights.length);
-      shader.frag.setDefine('NUM_MATERIALS'        , materials.length);
+      shaderRender.frag.setDefine('NUM_DIRECTIONALLIGHTS', directionallights.length);
+      shaderRender.frag.setDefine('NUM_MATERIALS'        , materials.length);
 
-      shader.begin();
+
+      shaderRender.begin();
 
       // materials 
       for(var i = 0; i < materials.length; i++){
-        setMaterial(shader, i);
+        setMaterial(shaderRender, i);
       }
       
       // ambient light
-      setAmbientlight(shader, ambientlight);
+      setAmbientlight(shaderRender, ambientlight);
       
-      setDirectionalLight(shader, 0);
+      setDirectionalLight(shaderRender, 0);
       
       var mat = {
         projection : m4_projection,
         modelview : m4_modelview,
         normals : m3_normals,
       }
+
+      // depthmap.enableShadowParam(false);
+      shaderRender.uniformT('depthmap.tex', depthmap.tex);
+      shaderRender.uniformF('depthmap.bias', depthmap.bias);
+      shaderRender.uniformF('depthmap.wh', [depthmap.tex.w, depthmap.tex.h]);
+      shaderRender.uniformM('depthmap.m4_modelview', depthmap.mat.modelview);
+      shaderRender.uniformM('depthmap.m4_projection', depthmap.mat.projection);
       
-      displayScene(shader, mat);
+      displayScene(shaderRender, mat);
       
-      shader.end();
+      shaderRender.end();
       
-      displayDepthmap();
+      depthmap.displayTex();
 
       HUD();
     }
     
     
-    function displayDepthmap(){
-      
-      var w_canvas = app.canvas.width;
-      var h_canvas = app.canvas.height;
-      
-      var viewport = orbit_light.getViewport();
-      
-      var w = viewport[2];
-      var h = viewport[3];
-      var x = viewport[0];
-      var y = viewport[1]; y = h_canvas - 1 - y - h;
-
-      shader_texdisplay.begin();
-      gl.viewport(x, y, w, h);
-      gl.colorMask(true, true, true, true);
-      gl.disable(gl.BLEND);
-      gl.disable(gl.DEPTH_TEST);
-      shader_texdisplay.uniformF('xy_off', [x, y]);
-      shader_texdisplay.uniformF('wh_rcp', [1/w, 1/h]);
-      shader_texdisplay.uniformT('tex', depthmap.tex);
-      shader_texdisplay.quad();
-      shader_texdisplay.end();
-    }
     
+    var displayScene = function(shader, mat){
     
-    function displayScene(shader, mat){
+      // model, local
+      mat4.identity(m4_modelworld);
+    
       // groundplane
-      mat.modelview.push();
-      mat.modelview.translate(0, 0, 0);
+      m4_modelworld.push();
+      m4_modelworld.translate(0, 0, 0);
       shader.uniformM('m4_projection', mat.projection);
-      shader.uniformM('m4_modelview' , mat.modelview );
+      shader.uniformM('m4_modelworld', m4_modelworld);
+      shader.uniformM('m4_modelview', mat.modelview );
       shader.uniformM('m3_normals', mat.normals   );
 
       groundplane.display(shader);
-      mat.modelview.pop();
+      m4_modelworld.pop();
       
       // evenly space primitives
-      var spacing = 900;
+      var spacing = 1200;
       var nx = Math.ceil(Math.sqrt(models.length));
       var ny = models.length / nx;
       var dimx = spacing * (nx-1);
       var dimy = spacing * (ny-1);
       
-      mat.modelview.push();
-      mat.modelview.translate(-dimx/2, -dimy/2, 400);
-
+      m4_modelworld.push();
+      m4_modelworld.translate(-dimx/2, -dimy/2, 0);
       for(var iy = 0; iy < ny; iy++){
        
-        mat.modelview.push();
+        m4_modelworld.push();
         for(var ix = 0; ix < nx; ix++){
-          
+
           var idx = iy * nx + ix;
           if(idx < models.length){
+            m4_modelworld.push();
+            
+            var zmin = models[idx].ifs.aabb[2];
+            var zmax = models[idx].ifs.aabb[5];
+            var dz = zmax - zmin;
+            if(dz === 0.0){
+              zmin -= 400;
+            }
+            
+            m4_modelworld.translate(0, 0, -zmin);
+            
             shader.uniformM('m4_projection', mat.projection);
+            shader.uniformM('m4_modelworld', m4_modelworld);
             shader.uniformM('m4_modelview' , mat.modelview );
             shader.uniformM('m3_normals', mat.normals   );
             models[idx].display(shader);
+            m4_modelworld.pop();
           }
-          mat.modelview.translate(spacing, 0, 0);
+ 
+          m4_modelworld.translate(spacing, 0, 0);
         }
-        mat.modelview.pop();
-        mat.modelview.translate(0, spacing, 0);
+        m4_modelworld.pop();
+        m4_modelworld.translate(0, spacing, 0);
       }
-      mat.modelview.pop();
-
-    }
-    
-    
-    
+      m4_modelworld.pop();
+    }.bind(app);
     
 
     var release = function(){
-      shader.release();
+      shaderRender.release();
       groundplane.release();
       for(var i = 0; i < models.length; i++){
         models[i].release();
       }
+      depthmap.release();
     }
     
     function HUD(){
@@ -747,7 +678,7 @@
     
 
 
-    Dw.start('ShadowMapping');
+    Dw.start('ShadowMapping - Basic');
 
   </script>
   
