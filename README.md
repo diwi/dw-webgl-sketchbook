@@ -18,7 +18,7 @@ The demos require a browser that supports webgl2.
 - [ReactionDiffusion](https://diwi.github.io/dw-webgl-sketchbook/sketches/ReactionDiffusion.html)
 - [Smoothstep](https://diwi.github.io/dw-webgl-sketchbook/sketches/Smoothstep.html)
 - [SubdivisionPrimitives](https://diwi.github.io/dw-webgl-sketchbook/sketches/SubdivisionPrimitives.html)
-
+- [ShadowMapping](https://diwi.github.io/dw-webgl-sketchbook/sketches/ShadowMapping_Basic.html)
 # Screenshots
 
 ![DeconstructionCubes1_small1](https://diwi.github.io/dw-webgl-sketchbook/sketches/screenshots/DeconstructionCubes1_small1.jpg)
